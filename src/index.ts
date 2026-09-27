@@ -39,3 +39,5 @@ export type { VerificationReport } from "./verify.js";
 
 export { reduceResults } from "./reduce.js";
 export type { BuiltinReducer, ReduceOptions } from "./reduce.js";
+
+export { REDUCER_REQUIREMENTS, expectedOutputFor } from "./reducer-contract.js";

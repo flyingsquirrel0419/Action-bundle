@@ -247,3 +247,18 @@ test("verify: rejects manifests from mixed runs", () => {
   );
 });
 
+test("verify: rejects taskCount that disagrees with the manifest", () => {
+  const m0 = manifestFor(0, 2, ["a", "b"]);
+  const m1 = manifestFor(1, 2, ["c", "d"]);
+  assert.throws(
+    () => verifyShards({
+      manifests: [m0, m1],
+      collected: [
+        resultFor(m0, ["a", "b"], { taskCount: 99 }),
+        resultFor(m1, ["c", "d"]),
+      ],
+      shardCount: 2,
+    }),
+    (e) => e.code === "MALFORMED_RESULT",
+  );
+});

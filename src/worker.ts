@@ -47,6 +47,11 @@ export interface WorkerRunOptions {
   outDir: string;
   env?: Record<string, string>;
   timeoutMs?: number;
+  /**
+   * Working directory for the worker command. When set, the command runs
+   * there (e.g. the caller workspace), not in the process cwd. Must exist.
+   */
+  cwd?: string;
 }
 
 const DEFAULT_WORKER_TIMEOUT_MS = 30 * 60 * 1000;
@@ -88,10 +93,23 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
   let status: ShardResultStatus = "success";
   let error: string | undefined;
   if (opts.command) {
+    const cwd = opts.cwd ?? process.cwd();
+    if (opts.cwd !== undefined) {
+      const { statSync, realpathSync } = await import("node:fs");
+      let st;
+      try {
+        st = statSync(cwd);
+      } catch {
+        throw new ActionBundleError("INVALID_CONFIG", "worker cwd does not exist: " + cwd, { cwd });
+      }
+      if (!st.isDirectory()) {
+        throw new ActionBundleError("INVALID_CONFIG", "worker cwd is not a directory: " + cwd, { cwd });
+      }
+    }
     try {
       const { stdout, stderr } = await execFileAsync("sh", ["-c", opts.command], {
         env,
-        cwd: process.cwd(),
+        cwd,
         maxBuffer: 64 * 1024 * 1024,
         timeout: opts.timeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
         killSignal: "SIGTERM",
@@ -105,17 +123,35 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
   }
 
   // Derive completed task ids from worker evidence, not from the plan.
+  // Malformed completion evidence is rejected, not silently repaired.
   let completedTaskIds: string[] = [];
+  let completionsRaw: string | undefined;
   try {
-    const raw = await readFile(completionsPath, "utf8");
-    const parsed = JSON.parse(raw) as { completedTaskIds?: unknown };
-    if (Array.isArray(parsed.completedTaskIds)) {
-      completedTaskIds = parsed.completedTaskIds.filter(
-        (id): id is string => typeof id === "string",
-      );
-    }
+    completionsRaw = await readFile(completionsPath, "utf8");
   } catch {
     // No completions file -> nothing completed.
+  }
+  if (completionsRaw !== undefined) {
+    try {
+      const parsed = JSON.parse(completionsRaw) as { completedTaskIds?: unknown };
+      if (!Array.isArray(parsed.completedTaskIds)) {
+        throw new Error("completedTaskIds must be an array");
+      }
+      const seen = new Set<string>();
+      for (const id of parsed.completedTaskIds) {
+        if (typeof id !== "string") {
+          throw new Error("completedTaskIds must all be strings, got " + typeof id);
+        }
+        if (seen.has(id)) {
+          throw new Error("completedTaskIds contains a duplicate: " + id);
+        }
+        seen.add(id);
+      }
+      completedTaskIds = parsed.completedTaskIds as string[];
+    } catch (e) {
+      status = "failed";
+      error = "malformed completions.json: " + (e instanceof Error ? e.message : String(e));
+    }
   }
 
   const finished = new Date();
@@ -159,4 +195,3 @@ export class WorkerError extends ActionBundleError {
     this.name = "WorkerError";
   }
 }
-

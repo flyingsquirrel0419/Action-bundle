@@ -44,6 +44,27 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
     });
   }
 
+  // Enforce a total-size ceiling for the in-memory reducers before reading,
+  // so many individually-valid shard outputs cannot exhaust memory together.
+  if (strategy === "concat" || strategy === "json-array" || strategy === "json-object") {
+    const name = strategy === "concat" ? "output.txt" : "output.json";
+    let total = 0;
+    for (let i = 0; i < shardCount; i++) {
+      try {
+        const st = await stat(join(partsDir, "shard-" + i, name));
+        total += st.size;
+      } catch {
+        // missing output is reported by readShardOutput during the merge
+      }
+      if (total > MAX_TOTAL_RESULT_BYTES) {
+        throw new ReductionError(
+          "total shard output exceeds the " + MAX_TOTAL_RESULT_BYTES + "-byte limit",
+          { totalBytes: total, max: MAX_TOTAL_RESULT_BYTES },
+        );
+      }
+    }
+  }
+
   switch (strategy) {
     case "concat": {
       const chunks: string[] = [];
@@ -58,7 +79,10 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
       for (let i = 0; i < shardCount; i++) {
         const raw = await readShardOutput(partsDir, i, "output.json");
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) items.push(...parsed);
+        // Append item-by-item: spread of a huge array can exceed argument limits.
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) items.push(item);
+        }
         else items.push(parsed);
       }
       await writeFile(opts.outPath, JSON.stringify(items, null, 2));

@@ -17,6 +17,29 @@ The reusable workflow runs the bundled benchmark worker. It is the fastest
 way to see the mechanics, and the reference implementation for your own
 three-job setup.
 
+## Custom worker and reducer (no fork needed)
+
+The reusable workflow accepts `command` and `reduce_command` inputs, so a
+caller repository can run its own code without forking the workflow:
+
+```yaml
+jobs:
+  compute:
+    uses: flyingsquirrel0419/Action-bundle/.github/workflows/run.yml@main
+    with:
+      workload: '{"kind":"list","items":["a.py","b.py","c.py"]}'
+      shards: "4"
+      reducer: "json-array"
+      command: "python3 scripts/process.py"      # runs in workspace/ (your repo)
+      reduce_command: "python3 scripts/merge.py" # optional custom merger
+```
+
+Your repository is checked out into `workspace/` and the worker command runs
+there (`--cwd workspace`). The Action-bundle runtime is checked out separately
+into `runtime/` from the exact reusable-workflow revision
+(`job.workflow_repository` / `job.workflow_sha`) — caller code can never
+replace the runtime.
+
 ## Rolling your own (custom worker)
 
 Copy [.github/workflows/run.yml](../.github/workflows/run.yml) and replace
@@ -42,4 +65,3 @@ the shard step's `--command` with your program:
   the verifier will name the missing shard precisely.
 - Permissions default to `contents: read`. Raise them only if your worker
   needs more.
-

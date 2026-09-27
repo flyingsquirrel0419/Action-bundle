@@ -7,7 +7,9 @@ import { runWorker } from "./worker.js";
 import { collectFromDir } from "./collector.js";
 import { verifyShards } from "./verify.js";
 import { reduceResults, type BuiltinReducer } from "./reduce.js";
+import { expectedOutputFor } from "./reducer-contract.js";
 import { ActionBundleError } from "./errors.js";
+import { ConfigurationError } from "./errors.js";
 import type { Workload } from "./task.js";
 
 // Exit codes: 0 ok, 2 invalid config/usage, 3 verification failure, 4 execution/reduction failure.
@@ -40,7 +42,7 @@ function usage(): never {
       "",
       "Commands:",
       "  plan     <workload.json> --shards 8 [--max-shards 32] [--min-tasks-per-shard 1]",
-      "  worker   --manifest manifest.json [--command \"sh ...\"] --out-dir dir",
+      "  worker   --manifest manifest.json [--command \"sh ...\"] --out-dir dir [--cwd dir]",
       "  verify   --parts-dir dir --shard-count 8 --manifests-dir dir [--expect-output output.json]",
       "  reduce   --parts-dir dir --shard-count 8 [--strategy concat|json-array|json-object|files|none] [--command \"sh ...\"] --out result",
       "",
@@ -69,6 +71,18 @@ function fail(err: unknown): never {
 
 async function readJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8"));
+}
+
+/** Parse a CLI flag as a positive integer, rejecting NaN/Infinity/fractions. */
+function positiveInt(value: string | undefined, name: string): number {
+  if (value === undefined) {
+    throw new ConfigurationError(name + " is required");
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw new ConfigurationError(name + " must be a positive integer, got " + JSON.stringify(value));
+  }
+  return n;
 }
 
 async function main(): Promise<void> {
@@ -109,13 +123,14 @@ async function main(): Promise<void> {
       manifest,
       command: flags.command,
       outDir: flags["out-dir"] ?? ".",
+      cwd: flags.cwd,
     });
     console.log(JSON.stringify(meta, null, 2));
     return;
   }
 
   if (cmd === "verify") {
-    const shardCount = Number(flags["shard-count"]);
+    const shardCount = positiveInt(flags["shard-count"], "--shard-count");
     const manifestsDir = flags["manifests-dir"] ?? "";
     const manifests = [];
     for (let i = 0; i < shardCount; i++) {
@@ -137,12 +152,20 @@ async function main(): Promise<void> {
   if (cmd === "reduce") {
     const res = await reduceResults({
       partsDir: flags["parts-dir"] ?? "",
-      shardCount: Number(flags["shard-count"]),
+      shardCount: positiveInt(flags["shard-count"], "--shard-count"),
       strategy: flags.strategy as BuiltinReducer | undefined,
       command: flags.command,
       outPath: flags.out ?? "bundle-result.json",
     });
     console.log("[action-bundle] reduction complete: " + res.strategy + " -> " + res.outPath);
+    return;
+  }
+
+  if (cmd === "expect-output") {
+    // Print the per-shard output path a reducer requires, or nothing.
+    const reducer = (flags.reducer ?? "json-array") as BuiltinReducer;
+    const expected = expectedOutputFor(reducer);
+    if (expected) console.log(expected);
     return;
   }
 

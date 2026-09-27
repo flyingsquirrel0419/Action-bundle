@@ -48,7 +48,8 @@ jobs:
 ```
 
 The run splits 2,000 tasks across 8 runners, executes the bundled demo worker,
-verifies every task ran exactly once, and uploads `final-result.json`.
+verifies that every planned task was reported complete exactly once — with each
+result bound to its expected shard and manifest — and uploads `final-result.json`.
 To run **your** code instead of the demo worker, use the library + CLI in your
 own workflow — see [docs/github-actions.md](docs/github-actions.md).
 

@@ -63,6 +63,7 @@ permissions:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shard_count: ${{ steps.plan.outputs.shard_count }}
@@ -104,6 +105,7 @@ jobs:
   shard:
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
@@ -143,6 +145,7 @@ jobs:
           node runtime/dist/cli.js worker \
             --manifest manifests/manifest-${SHARD}.json \
             --out-dir out \
+            --cwd workspace \
             --command "$CMD"
       - name: Upload shard result
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -154,6 +157,7 @@ jobs:
   aggregate:
     needs: [setup, shard]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # job.workflow_repository / job.workflow_sha resolve to the CALLEE
       # (Action-bundle), the exact reusable workflow source. Verified by
@@ -182,12 +186,23 @@ jobs:
           name: ab-manifests
           path: manifests/
       - name: Verify completeness
+        env:
+          REDUCER: ${{ inputs.reducer || 'json-array' }}
+          REDUCE_COMMAND: ${{ inputs.reduce_command || '' }}
         run: |
+          # Only expect a specific output file when the reducer requires one.
+          EXPECT_ARGS=""
+          if [ -z "$REDUCE_COMMAND" ] && [ "$REDUCER" != "none" ]; then
+            EXPECTED=$(node runtime/dist/cli.js expect-output --reducer "$REDUCER" 2>/dev/null || true)
+            if [ -n "$EXPECTED" ]; then
+              EXPECT_ARGS="--expect-output $EXPECTED"
+            fi
+          fi
           node runtime/dist/cli.js verify \
             --parts-dir parts/ \
             --shard-count ${{ needs.setup.outputs.shard_count }} \
             --manifests-dir manifests/ \
-            --expect-output output.json
+            $EXPECT_ARGS
       - name: Reduce results
         env:
           REDUCER: ${{ inputs.reducer || 'json-array' }}
@@ -225,4 +240,3 @@ jobs:
           name: final-result
           path: final-result.json
           retention-days: 30
-

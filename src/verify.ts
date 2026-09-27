@@ -105,6 +105,15 @@ export function verifyShards(opts: {
         { shard: c.shard, error: c.meta.error },
       );
     }
+    // taskCount must agree with the manifest it is bound to.
+    if (c.meta.taskCount !== m.tasks.length) {
+      throw new VerificationError(
+        "MALFORMED_RESULT",
+        "shard " + c.shard + " reported taskCount " + c.meta.taskCount +
+          " but its manifest has " + m.tasks.length + " tasks",
+        { shard: c.shard, reported: c.meta.taskCount, planned: m.tasks.length },
+      );
+    }
     // Per-shard assignment: reported completions must be exactly this shard's
     // planned tasks — not another shard's, and not the global set.
     const planned = new Set(m.tasks.map((t) => t.id));
@@ -117,7 +126,8 @@ export function verifyShards(opts: {
         { shard: c.shard, notMine: notMine.slice(0, 20) },
       );
     }
-    const notDone = [...planned].filter((id) => !reported.includes(id));
+    const reportedSet = new Set(reported);
+    const notDone = [...planned].filter((id) => !reportedSet.has(id));
     if (notDone.length > 0) {
       throw new VerificationError(
         "MISSING_TASKS",
@@ -147,4 +157,3 @@ export function verifyShards(opts: {
     verifiedTasks: completedGlobal.size,
   };
 }
-
