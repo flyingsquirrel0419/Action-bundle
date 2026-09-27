@@ -50,8 +50,20 @@ jobs:
 The run splits 2,000 tasks across 8 runners, executes the bundled demo worker,
 verifies that every planned task was reported complete exactly once — with each
 result bound to its expected shard and manifest — and uploads `final-result.json`.
-To run **your** code instead of the demo worker, use the library + CLI in your
-own workflow — see [docs/github-actions.md](docs/github-actions.md).
+To run **your** code instead of the demo worker, pass `command` (and
+optionally `reduce_command`) to the same reusable workflow — they run in a
+checkout of your repository:
+
+```yaml
+    with:
+      workload: '{"kind":"list","items":["a.py","b.py","c.py"]}'
+      shards: "4"
+      command: "python3 scripts/process.py"      # your worker
+      reduce_command: "python3 scripts/merge.py" # optional custom merger
+```
+
+See [docs/github-actions.md](docs/github-actions.md) for details, or use the
+library + CLI to build a workflow of your own.
 
 ## The pieces
 
@@ -93,6 +105,9 @@ Full API: [docs/library.md](docs/library.md). Worker environment variables:
 [docs/worker-contract.md](docs/worker-contract.md).
 
 ## Benchmark (measured, not marketed)
+
+> **Historical benchmark** — measured before the current runtime/workspace
+> architecture; to be re-measured before the stable release.
 
 Real GitHub-hosted runners, 20,000 CPU-bound tasks (~5ms each):
 

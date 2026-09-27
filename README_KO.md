@@ -47,9 +47,21 @@ jobs:
 ```
 
 이 실행은 2,000개 작업을 8개 러너로 나누고, 내장 데모 워커를 실행하고,
-모든 작업이 정확히 한 번씩 실행됐는지 검증한 뒤 `final-result.json`을
-업로드한다. 데모 워커 대신 **내 코드**를 돌리려면 라이브러리 + CLI를 쓴다 —
-[docs/github-actions.md](docs/github-actions.md) 참고.
+계획된 모든 작업이 정확히 한 번씩 완료 보고됐는지(각 결과가 자기 shard와
+manifest에 묶여 있는지) 검증한 뒤 `final-result.json`을 업로드한다. 데모 워커
+대신 **내 코드**를 돌리려면 같은 reusable workflow에 `command`(선택적으로
+`reduce_command`)를 넘기면 된다 — 내 저장소 checkout 안에서 실행된다:
+
+```yaml
+    with:
+      workload: '{"kind":"list","items":["a.py","b.py","c.py"]}'
+      shards: "4"
+      command: "python3 scripts/process.py"      # 내 워커
+      reduce_command: "python3 scripts/merge.py" # 선택: 커스텀 병합
+```
+
+자세한 내용은 [docs/github-actions.md](docs/github-actions.md), 직접 workflow를
+짜려면 라이브러리 + CLI를 쓰면 된다.
 
 ## 구성 요소
 
@@ -91,6 +103,9 @@ const plan = createPlan({ workload: { kind: "index", count: 10_000 }, shards: "a
 [docs/worker-contract.md](docs/worker-contract.md).
 
 ## 벤치마크 (마케팅이 아니라 실측)
+
+> **과거 벤치마크** — 현재 runtime/workspace 아키텍처 이전에 측정한 값이다.
+> 안정 릴리스 전에 다시 측정할 예정.
 
 실제 GitHub 호스팅 러너, 20,000개 CPU 바운드 태스크 (개당 ~5ms):
 

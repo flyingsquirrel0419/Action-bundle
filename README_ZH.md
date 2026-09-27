@@ -47,9 +47,21 @@ jobs:
 ```
 
 这次运行会把 2,000 个任务切到 8 个 runner 上,执行内置的演示 worker,
-验证每个任务恰好执行一次,然后上传 `final-result.json`。
-要运行**你自己的**代码而不是演示 worker,使用库 + CLI —
-见 [docs/github-actions.md](docs/github-actions.md)。
+验证每个计划任务都恰好被报告完成一次(每个结果都绑定到它所属的 shard 和
+manifest),然后上传 `final-result.json`。要运行**你自己的**代码而不是演示
+worker,给同一个 reusable workflow 传 `command`(可选 `reduce_command`)——
+它们在你仓库的 checkout 中运行:
+
+```yaml
+    with:
+      workload: '{"kind":"list","items":["a.py","b.py","c.py"]}'
+      shards: "4"
+      command: "python3 scripts/process.py"      # 你的 worker
+      reduce_command: "python3 scripts/merge.py" # 可选: 自定义合并
+```
+
+详见 [docs/github-actions.md](docs/github-actions.md);要自己编写 workflow,
+使用库 + CLI。
 
 ## 组成部分
 
@@ -91,6 +103,9 @@ const plan = createPlan({ workload: { kind: "index", count: 10_000 }, shards: "a
 [docs/worker-contract.md](docs/worker-contract.md)。
 
 ## 基准测试(实测,而非宣传)
+
+> **历史基准** —— 在当前 runtime/workspace 架构之前测得,稳定版发布前会
+> 重新测量。
 
 真实 GitHub 托管 runner,20,000 个 CPU 密集任务(每个约 5ms):
 

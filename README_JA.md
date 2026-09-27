@@ -48,9 +48,22 @@ jobs:
 ```
 
 この実行は 2,000 タスクを 8 ランナーに分割し、同梱のデモワーカーを実行し、
-全タスクがちょうど1回ずつ実行されたことを検証して `final-result.json` を
-アップロードする。デモワーカーではなく**自分のコード**を回すにはライブラリ
-+ CLI を使う — [docs/github-actions.md](docs/github-actions.md) 参照。
+計画された全タスクがちょうど1回ずつ完了報告されたこと(各結果が自分の
+shard と manifest に紐付いていること)を検証して `final-result.json` を
+アップロードする。デモワーカーではなく**自分のコード**を回すには、同じ
+reusable workflow に `command`(必要なら `reduce_command`)を渡す — 自分の
+リポジトリの checkout 内で実行される:
+
+```yaml
+    with:
+      workload: '{"kind":"list","items":["a.py","b.py","c.py"]}'
+      shards: "4"
+      command: "python3 scripts/process.py"      # 自分のワーカー
+      reduce_command: "python3 scripts/merge.py" # 任意: カスタム集約
+```
+
+詳細は [docs/github-actions.md](docs/github-actions.md)。独自の workflow を
+組む場合はライブラリ + CLI を使う。
 
 ## 構成要素
 
@@ -92,6 +105,9 @@ const plan = createPlan({ workload: { kind: "index", count: 10_000 }, shards: "a
 [docs/worker-contract.md](docs/worker-contract.md)。
 
 ## ベンチマーク (宣伝ではなく実測)
+
+> **過去のベンチマーク** — 現在の runtime/workspace アーキテクチャ以前に
+> 測定した値。安定版リリース前に再測定する予定。
 
 実際の GitHub ホストランナー、20,000 CPU バウンドタスク (各 ~5ms):
 
