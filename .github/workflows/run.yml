@@ -68,14 +68,25 @@ jobs:
       shard_count: ${{ steps.plan.outputs.shard_count }}
       run_id: ${{ steps.plan.outputs.run_id }}
     steps:
-      # Check out the EXACT Action-bundle source for this reusable workflow,
-      # into runtime/, never the caller repo. github.workflow_ref resolves to
-      # the ref the caller's "uses:" pointed at.
+      # Resolve the exact Action-bundle source this reusable workflow came from.
+      # github.workflow_ref is 'owner/repo/.github/workflows/x.yml@ref'.
+      # The caller's own repo is NEVER used as the runtime.
+      - name: Resolve Action-bundle runtime source
+        id: rt
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          REPO=${WORKFLOW_REF%%/.github/*}
+          REF=${WORKFLOW_REF##*@}
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "runtime source: $REPO @ $REF"
       - name: Checkout Action-bundle runtime
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: ${{ github.workflow_repository }}
-          ref: ${{ github.workflow_sha }}
+          repository: ${{ steps.rt.outputs.repo }}
+          ref: ${{ steps.rt.outputs.ref }}
           path: runtime/
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -105,18 +116,26 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
+      - name: Resolve Action-bundle runtime source
+        id: rt
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          REPO=${WORKFLOW_REF%%/.github/*}
+          REF=${WORKFLOW_REF##*@}
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
       # Caller workspace: arbitrary worker code runs here.
       - name: Checkout caller workspace
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: workspace/
           persist-credentials: false
-      # Action-bundle runtime, exact source, separate path.
       - name: Checkout Action-bundle runtime
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: ${{ github.workflow_repository }}
-          ref: ${{ github.workflow_sha }}
+          repository: ${{ steps.rt.outputs.repo }}
+          ref: ${{ steps.rt.outputs.ref }}
           path: runtime/
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -156,11 +175,20 @@ jobs:
     needs: [setup, shard]
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve Action-bundle runtime source
+        id: rt
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          REPO=${WORKFLOW_REF%%/.github/*}
+          REF=${WORKFLOW_REF##*@}
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
       - name: Checkout Action-bundle runtime
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: ${{ github.workflow_repository }}
-          ref: ${{ github.workflow_sha }}
+          repository: ${{ steps.rt.outputs.repo }}
+          ref: ${{ steps.rt.outputs.ref }}
           path: runtime/
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
