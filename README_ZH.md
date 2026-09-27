@@ -4,7 +4,7 @@
 
 **把一个任务拆成 N 个并行的 GitHub Actions 分片(shard),再把结果合并成一个 bundle**
 
-[English](README_EN.md) · [한국어](README.md) · [简体中文](README_ZH.md)
+[English](README.md) · [한국어](README_KO.md) · [简体中文](README_ZH.md)
 
 [![shard-and-bundle](https://github.com/flyingsquirrel0419/Action-bundle/actions/workflows/bundle.yml/badge.svg)](https://github.com/flyingsquirrel0419/Action-bundle/actions/workflows/bundle.yml)
 [![npm version](https://img.shields.io/npm/v/action-bundle.svg)](https://www.npmjs.com/package/action-bundle)
@@ -119,4 +119,3 @@ jobs:
 ## 许可证
 
 [MIT](LICENSE)
-
