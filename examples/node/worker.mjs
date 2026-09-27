@@ -7,4 +7,10 @@ fs.writeFileSync(
   process.env.ACTION_BUNDLE_OUTPUT_DIR + "/output.json",
   JSON.stringify(rows),
 );
+if (process.env.ACTION_BUNDLE_COMPLETIONS) {
+  fs.writeFileSync(
+    process.env.ACTION_BUNDLE_COMPLETIONS,
+    JSON.stringify({ completedTaskIds: manifest.tasks.map((t) => t.id) }),
+  );
+}
 console.log("[node-worker] shard " + manifest.shardIndex + ": " + rows.length + " tasks");

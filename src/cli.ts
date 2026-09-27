@@ -56,7 +56,12 @@ function fail(err: unknown): never {
     console.error("[action-bundle] " + err.name + " (" + err.code + ")");
     console.error(err.message);
     if (err.details) console.error(JSON.stringify(err.details, null, 2));
-    process.exit(err.code === "INVALID_CONFIG" ? 2 : err.code.startsWith("MISSING") || err.code.startsWith("DUPLICATE") || err.code === "UNEXPECTED_SHARD_COUNT" || err.code === "MALFORMED_RESULT" ? 3 : 4);
+    const verificationCodes = new Set([
+      "MISSING_SHARDS", "MISSING_TASKS", "DUPLICATE_SHARDS", "DUPLICATE_TASKS",
+      "UNEXPECTED_SHARD_COUNT", "MALFORMED_RESULT", "RUN_ID_MISMATCH",
+      "MANIFEST_DIGEST_MISMATCH", "FAILED_SHARD", "SHARD_ASSIGNMENT_MISMATCH",
+    ]);
+    process.exit(err.code === "INVALID_CONFIG" || err.code === "PLANNING_ERROR" ? 2 : verificationCodes.has(err.code) ? 3 : 4);
   }
   console.error(err instanceof Error ? err.message : err);
   process.exit(4);

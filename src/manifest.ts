@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Task } from "./task.js";
 import { ActionBundleError, ManifestError } from "./errors.js";
 
-export const MANIFEST_VERSION = 1;
+export const MANIFEST_VERSION = 2;
 
 /** Execution manifest handed to each shard worker. Versioned schema. */
 export interface ShardManifest {
@@ -11,6 +11,19 @@ export interface ShardManifest {
   shardIndex: number;
   shardCount: number;
   tasks: { id: string; input?: unknown }[];
+}
+
+/** Deterministic canonical JSON: recursively sort object keys, keep array order. */
+export function canonicalize(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return "[" + value.map(canonicalize).join(",") + "]";
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalize(obj[k])).join(",") + "}";
 }
 
 export function createManifest(opts: {
@@ -35,7 +48,12 @@ export function createManifest(opts: {
   };
 }
 
-/** Parse and validate a manifest read from disk. */
+/** SHA-256 digest of the canonical manifest bytes — binds a result to its plan. */
+export function manifestDigest(manifest: ShardManifest): string {
+  return createHash("sha256").update(canonicalize(manifest)).digest("hex");
+}
+
+/** Parse and validate a manifest read from disk. Treats input as untrusted. */
 export function parseManifest(raw: unknown): ShardManifest {
   if (typeof raw !== "object" || raw === null) {
     throw new ManifestError("manifest is not an object");
@@ -48,29 +66,57 @@ export function parseManifest(raw: unknown): ShardManifest {
       { expected: MANIFEST_VERSION, got: m.version },
     );
   }
-  if (
-    typeof m.runId !== "string" ||
-    typeof m.shardIndex !== "number" ||
-    typeof m.shardCount !== "number"
-  ) {
-    throw new ManifestError("manifest missing runId/shardIndex/shardCount");
+  if (typeof m.runId !== "string" || m.runId.length === 0 || m.runId.length > 128) {
+    throw new ManifestError("manifest runId must be a non-empty string <= 128 chars");
+  }
+  for (const field of ["shardIndex", "shardCount"] as const) {
+    const v = m[field];
+    if (typeof v !== "number" || !Number.isInteger(v) || !Number.isFinite(v)) {
+      throw new ManifestError("manifest " + field + " must be an integer", { got: v });
+    }
+  }
+  const shardCount = m.shardCount as number;
+  const shardIndex = m.shardIndex as number;
+  if (shardCount < 1) {
+    throw new ManifestError("manifest shardCount must be >= 1", { got: shardCount });
+  }
+  if (shardIndex < 0 || shardIndex >= shardCount) {
+    throw new ManifestError(
+      "manifest shardIndex " + shardIndex + " outside 0.." + (shardCount - 1),
+    );
   }
   if (!Array.isArray(m.tasks)) {
     throw new ManifestError("manifest tasks is not an array");
   }
+  const seen = new Set<string>();
   for (const t of m.tasks) {
-    if (typeof t !== "object" || t === null || typeof (t as { id?: unknown }).id !== "string") {
-      throw new ManifestError("every manifest task needs a string id");
+    if (typeof t !== "object" || t === null) {
+      throw new ManifestError("every manifest task must be an object");
     }
+    const id = (t as { id?: unknown }).id;
+    if (typeof id !== "string" || id.length === 0 || id.length > 4096) {
+      throw new ManifestError("every manifest task needs a string id (1..4096 chars)");
+    }
+    if (seen.has(id)) {
+      throw new ManifestError("duplicate task id in manifest: " + id);
+    }
+    seen.add(id);
   }
   return m as unknown as ShardManifest;
 }
 
-/** Content-derived run id, stable for identical workloads. */
+/**
+ * Content-derived run id. Includes canonical task payloads so two workloads
+ * with the same ids but different inputs get different identities.
+ */
 export function runIdFor(tasks: Task[], shardCount: number): string {
-  const h = createHash("sha1");
-  h.update(String(shardCount));
-  for (const t of tasks) h.update("\0" + t.id);
-  return "run-" + h.digest("hex").slice(0, 12);
+  const h = createHash("sha256");
+  h.update(String(MANIFEST_VERSION));
+  h.update("\0" + String(shardCount));
+  for (const t of tasks) {
+    h.update("\0" + t.id);
+    if (t.input !== undefined) h.update("\0in:" + canonicalize(t.input));
+  }
+  return "run-" + h.digest("hex").slice(0, 16);
 }
 

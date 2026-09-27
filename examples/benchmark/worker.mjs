@@ -13,5 +13,9 @@ fs.writeFileSync(
   process.env.ACTION_BUNDLE_OUTPUT_DIR + "/output.json",
   JSON.stringify(rows),
 );
+// Report completions through the completion protocol.
+fs.writeFileSync(
+  process.env.ACTION_BUNDLE_COMPLETIONS,
+  JSON.stringify({ completedTaskIds: manifest.tasks.map((t) => t.id) }),
+);
 console.log("[benchmark] shard " + manifest.shardIndex + ": " + rows.length + " tasks at intensity " + intensity);
-

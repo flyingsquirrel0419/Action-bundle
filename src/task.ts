@@ -23,6 +23,7 @@ export function workloadToTasks(workload: Workload): Task[] {
     case "index":
       if (
         !Number.isFinite(workload.count) ||
+        !Number.isInteger(workload.count) ||
         workload.count < 0 ||
         workload.count > MAX_TASKS
       ) {

@@ -46,6 +46,16 @@ on:
         required: false
         default: "json-array"
         type: string
+      command:
+        description: "Worker command run per shard (arbitrary code; runs in the caller workspace)"
+        required: false
+        default: ""
+        type: string
+      reduce_command:
+        description: "Custom reduce command (arbitrary code)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -58,22 +68,34 @@ jobs:
       shard_count: ${{ steps.plan.outputs.shard_count }}
       run_id: ${{ steps.plan.outputs.run_id }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Check out the EXACT Action-bundle source for this reusable workflow,
+      # into runtime/, never the caller repo. github.workflow_ref resolves to
+      # the ref the caller's "uses:" pointed at.
+      - name: Checkout Action-bundle runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.workflow_repository }}
+          ref: ${{ github.workflow_ref }}
+          path: runtime/
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
-      - run: npm ci && npm run build
+      - name: Build Action-bundle runtime
+        working-directory: runtime/
+        run: npm ci && npm run build
       - name: Build execution plan
         id: plan
+        working-directory: runtime/
         env:
           WORKLOAD: ${{ inputs.workload || '{"kind":"index","count":2000}' }}
           SHARDS: ${{ inputs.shards || '8' }}
         run: node scripts/plan.mjs
       - name: Upload manifests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ab-manifests
-          path: manifests/
+          path: runtime/manifests/
           retention-days: 7
 
   shard:
@@ -83,13 +105,28 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Caller workspace: arbitrary worker code runs here.
+      - name: Checkout caller workspace
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: workspace/
+          persist-credentials: false
+      # Action-bundle runtime, exact source, separate path.
+      - name: Checkout Action-bundle runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.workflow_repository }}
+          ref: ${{ github.workflow_ref }}
+          path: runtime/
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
-      - run: npm ci && npm run build
+      - name: Build Action-bundle runtime
+        working-directory: runtime/
+        run: npm ci && npm run build
       - name: Download manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ab-manifests
           path: manifests/
@@ -97,13 +134,19 @@ jobs:
         env:
           INTENSITY: ${{ inputs.intensity || '200' }}
           SHARD: ${{ matrix.shard }}
+          WORKER_COMMAND: ${{ inputs.command || '' }}
         run: |
-          node dist/cli.js worker \
+          if [ -n "$WORKER_COMMAND" ]; then
+            CMD="$WORKER_COMMAND"
+          else
+            CMD="node runtime/examples/benchmark/worker.mjs"
+          fi
+          node runtime/dist/cli.js worker \
             --manifest manifests/manifest-${SHARD}.json \
             --out-dir out \
-            --command "node examples/benchmark/worker.mjs"
+            --command "$CMD"
       - name: Upload shard result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: shard-${{ matrix.shard }}
           path: out/
@@ -113,24 +156,32 @@ jobs:
     needs: [setup, shard]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Action-bundle runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.workflow_repository }}
+          ref: ${{ github.workflow_ref }}
+          path: runtime/
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
-      - run: npm ci && npm run build
+      - name: Build Action-bundle runtime
+        working-directory: runtime/
+        run: npm ci && npm run build
       - name: Download all shard results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: shard-*
           path: parts/
       - name: Download manifests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ab-manifests
           path: manifests/
       - name: Verify completeness
         run: |
-          node dist/cli.js verify \
+          node runtime/dist/cli.js verify \
             --parts-dir parts/ \
             --shard-count ${{ needs.setup.outputs.shard_count }} \
             --manifests-dir manifests/ \
@@ -138,12 +189,21 @@ jobs:
       - name: Reduce results
         env:
           REDUCER: ${{ inputs.reducer || 'json-array' }}
+          REDUCE_COMMAND: ${{ inputs.reduce_command || '' }}
         run: |
-          node dist/cli.js reduce \
-            --parts-dir parts/ \
-            --shard-count ${{ needs.setup.outputs.shard_count }} \
-            --strategy "$REDUCER" \
-            --out final-result.json
+          if [ -n "$REDUCE_COMMAND" ]; then
+            node runtime/dist/cli.js reduce \
+              --parts-dir parts/ \
+              --shard-count ${{ needs.setup.outputs.shard_count }} \
+              --command "$REDUCE_COMMAND" \
+              --out final-result.json
+          else
+            node runtime/dist/cli.js reduce \
+              --parts-dir parts/ \
+              --shard-count ${{ needs.setup.outputs.shard_count }} \
+              --strategy "$REDUCER" \
+              --out final-result.json
+          fi
       - name: Write summary
         env:
           SUMMARY_REDUCER: ${{ inputs.reducer || 'json-array' }}
@@ -158,8 +218,9 @@ jobs:
             echo "| Reducer | \`$SUMMARY_REDUCER\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload final result
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: final-result
           path: final-result.json
           retention-days: 30
+

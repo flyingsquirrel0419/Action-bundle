@@ -1,22 +1,31 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import type { ShardManifest } from "./manifest.js";
+import { manifestDigest } from "./manifest.js";
 import { ActionBundleError } from "./errors.js";
 
 const execFileAsync = promisify(execFile);
 
+export type ShardResultStatus = "success" | "failed";
+
 export interface ShardResultMeta {
-  version: 1;
+  version: 2;
+  runId: string;
   shard: number;
-  status: "success" | "failed";
+  manifestDigest: string;
+  status: ShardResultStatus;
   taskCount: number;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
-  /** Task ids actually completed, reported by the worker run. */
+  /**
+   * Tasks the worker actually reported complete via completions.json.
+   * Action-bundle no longer invents proof that arbitrary worker code ran
+   * every task — this set comes from worker-produced evidence.
+   */
   completedTaskIds: string[];
   outputs: string[];
   error?: string;
@@ -29,16 +38,14 @@ export const WORKER_ENV = {
   RUN_ID: "ACTION_BUNDLE_RUN_ID",
   MANIFEST: "ACTION_BUNDLE_MANIFEST",
   OUTPUT_DIR: "ACTION_BUNDLE_OUTPUT_DIR",
+  COMPLETIONS: "ACTION_BUNDLE_COMPLETIONS",
 } as const;
 
 export interface WorkerRunOptions {
   manifest: ShardManifest;
-  /** Language-agnostic command run by the shard, e.g. "python process.py". */
   command?: string;
   outDir: string;
-  /** Extra env for the child process. */
   env?: Record<string, string>;
-  /** Max milliseconds the command may run before SIGTERM. Default 30 min. */
   timeoutMs?: number;
 }
 
@@ -46,8 +53,14 @@ const DEFAULT_WORKER_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Execute one shard: write manifest.json, expose ACTION_BUNDLE_* env vars,
- * run the command (if any), then write result-meta.json. The command is
- * expected to write its own outputs into outDir; meta is tracked separately.
+ * run the command, then derive result-meta.json from the worker's evidence.
+ *
+ * Completion protocol: the worker reports finished tasks by writing
+ * {"completedTaskIds": [...]} to $ACTION_BUNDLE_COMPLETIONS
+ * (= <outDir>/completions.json). If the file is absent, completedTaskIds is
+ * empty — a worker that exits 0 without reporting completions completes
+ * nothing. Action-bundle records what the worker *reported*; it cannot prove
+ * Byzantine correctness of arbitrary computation, and does not claim to.
  */
 export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta> {
   const { manifest, outDir } = opts;
@@ -56,6 +69,7 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
 
   const manifestPath = join(outDir, "manifest.json");
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+  const completionsPath = join(outDir, "completions.json");
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -65,12 +79,13 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
     [WORKER_ENV.RUN_ID]: manifest.runId,
     [WORKER_ENV.MANIFEST]: manifestPath,
     [WORKER_ENV.OUTPUT_DIR]: outDir,
+    [WORKER_ENV.COMPLETIONS]: completionsPath,
   };
 
   log("shard " + manifest.shardIndex + "/" + manifest.shardCount);
   log("tasks: " + manifest.tasks.length);
 
-  let status: "success" | "failed" = "success";
+  let status: ShardResultStatus = "success";
   let error: string | undefined;
   if (opts.command) {
     try {
@@ -89,16 +104,32 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
     }
   }
 
+  // Derive completed task ids from worker evidence, not from the plan.
+  let completedTaskIds: string[] = [];
+  try {
+    const raw = await readFile(completionsPath, "utf8");
+    const parsed = JSON.parse(raw) as { completedTaskIds?: unknown };
+    if (Array.isArray(parsed.completedTaskIds)) {
+      completedTaskIds = parsed.completedTaskIds.filter(
+        (id): id is string => typeof id === "string",
+      );
+    }
+  } catch {
+    // No completions file -> nothing completed.
+  }
+
   const finished = new Date();
   const meta: ShardResultMeta = {
-    version: 1,
+    version: 2,
+    runId: manifest.runId,
     shard: manifest.shardIndex,
+    manifestDigest: manifestDigest(manifest),
     status,
     taskCount: manifest.tasks.length,
     startedAt: started.toISOString(),
     finishedAt: finished.toISOString(),
     durationMs: finished.getTime() - started.getTime(),
-    completedTaskIds: status === "success" ? manifest.tasks.map((t) => t.id) : [],
+    completedTaskIds,
     outputs: [manifestPath],
     error,
   };
@@ -122,10 +153,10 @@ function log(msg: string): void {
   console.log("[action-bundle] " + msg);
 }
 
-/** Worker command failed. */
 export class WorkerError extends ActionBundleError {
   constructor(message: string, details?: Record<string, unknown>) {
     super("WORKER_ERROR", message, details);
     this.name = "WorkerError";
   }
 }
+

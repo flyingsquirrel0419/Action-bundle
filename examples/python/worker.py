@@ -25,9 +25,12 @@ def main() -> None:
     out_path = os.path.join(out_dir, "output.json")
     with open(out_path, "w") as f:
         json.dump(results, f)
+    completions = os.environ.get("ACTION_BUNDLE_COMPLETIONS")
+    if completions:
+        with open(completions, "w") as f:
+            json.dump({"completedTaskIds": [t["id"] for t in manifest["tasks"]]}, f)
     print(f"[python-worker] shard {shard}: {len(results)} tasks -> {out_path}")
 
 
 if __name__ == "__main__":
     main()
-

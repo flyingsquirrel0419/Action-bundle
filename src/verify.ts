@@ -1,5 +1,5 @@
 import { VerificationError } from "./errors.js";
-import type { ShardManifest } from "./manifest.js";
+import { manifestDigest, type ShardManifest } from "./manifest.js";
 import type { CollectedShard } from "./collector.js";
 
 export interface VerificationReport {
@@ -7,16 +7,17 @@ export interface VerificationReport {
   shardCount: number;
   expectedTasks: number;
   verifiedTasks: number;
-  missingShards: number[];
-  missingTasks: string[];
-  duplicateTasks: string[];
 }
 
 /**
  * Verify collected shard results against the planned manifests.
- * Checks: every shard present, no duplicate shards, task coverage exact
- * (no missing, no duplicates, no unexpected ids), manifest version match.
- * Returns a report; throws VerificationError on failure with details.
+ *
+ * Order: identity (run + manifest digest) -> status -> per-shard assignment
+ * -> global coverage. Each result must be bound to its own manifest before
+ * its task claims are trusted.
+ *
+ * This proves reported completeness and consistency, not Byzantine
+ * correctness of arbitrary computation.
  */
 export function verifyShards(opts: {
   manifests: ShardManifest[];
@@ -25,14 +26,43 @@ export function verifyShards(opts: {
 }): VerificationReport {
   const { manifests, collected, shardCount } = opts;
 
-  const expectedShardIds = new Set(manifests.map((m) => m.shardIndex));
+  // Cross-manifest consistency: all manifests agree on version/runId/shardCount,
+  // and indices are exactly 0..shardCount-1.
+  if (manifests.length !== shardCount) {
+    throw new VerificationError(
+      "UNEXPECTED_SHARD_COUNT",
+      "expected " + shardCount + " manifests, got " + manifests.length,
+    );
+  }
+  const runIds = new Set(manifests.map((m) => m.runId));
+  const versions = new Set(manifests.map((m) => m.version));
+  const shardCounts = new Set(manifests.map((m) => m.shardCount));
+  if (runIds.size !== 1 || versions.size !== 1 || shardCounts.size !== 1) {
+    throw new VerificationError(
+      "MANIFEST_ERROR",
+      "manifests disagree on version/runId/shardCount",
+      { runIds: [...runIds], versions: [...versions], shardCounts: [...shardCounts] },
+    );
+  }
+  const manifestByShard = new Map<number, ShardManifest>();
+  for (const m of manifests) {
+    if (manifestByShard.has(m.shardIndex)) {
+      throw new VerificationError("DUPLICATE_SHARDS", "duplicate manifest for shard " + m.shardIndex);
+    }
+    manifestByShard.set(m.shardIndex, m);
+  }
+  for (let i = 0; i < shardCount; i++) {
+    if (!manifestByShard.has(i)) {
+      throw new VerificationError("MISSING_SHARDS", "missing manifest for shard " + i);
+    }
+  }
+  const expectedRunId = manifests[0].runId;
+
+  // Per-result checks: identity binding + status + per-shard assignment.
   const receivedIds = collected.map((c) => c.shard);
-  const receivedSet = new Set(receivedIds);
-  if (receivedSet.size !== receivedIds.length) {
-    const dupes = receivedIds.filter((id, i) => receivedIds.indexOf(id) !== i);
-    throw new VerificationError("DUPLICATE_SHARDS", "duplicate shard results: " + dupes.join(", "), {
-      duplicates: [...new Set(dupes)],
-    });
+  if (new Set(receivedIds).size !== receivedIds.length) {
+    const dupes = [...new Set(receivedIds.filter((id, i) => receivedIds.indexOf(id) !== i))];
+    throw new VerificationError("DUPLICATE_SHARDS", "duplicate shard results: " + dupes.join(", "), { duplicates: dupes });
   }
   if (collected.length !== shardCount) {
     throw new VerificationError(
@@ -42,41 +72,69 @@ export function verifyShards(opts: {
     );
   }
 
-  const missingShards = [...expectedShardIds].filter((id) => !receivedSet.has(id));
-  if (missingShards.length > 0) {
-    throw new VerificationError("MISSING_SHARDS", "missing shards: " + missingShards.join(", "), {
-      missingShards,
-    });
+  const expectedTasksGlobal = new Set<string>();
+  for (const m of manifests) for (const t of m.tasks) expectedTasksGlobal.add(t.id);
+  const completedGlobal = new Set<string>();
+
+  for (const c of collected) {
+    const m = manifestByShard.get(c.shard);
+    if (!m) {
+      throw new VerificationError("MISSING_SHARDS", "no manifest for reported shard " + c.shard);
+    }
+    // Identity: result must be bound to this exact run and manifest.
+    if (c.meta.runId !== expectedRunId) {
+      throw new VerificationError(
+        "RUN_ID_MISMATCH",
+        "shard " + c.shard + " result bound to run " + c.meta.runId + ", expected " + expectedRunId,
+        { shard: c.shard, got: c.meta.runId, expected: expectedRunId },
+      );
+    }
+    const expectedDigest = manifestDigest(m);
+    if (c.meta.manifestDigest !== expectedDigest) {
+      throw new VerificationError(
+        "MANIFEST_DIGEST_MISMATCH",
+        "shard " + c.shard + " result bound to a different manifest",
+        { shard: c.shard },
+      );
+    }
+    // Status: a failed shard can never pass verification.
+    if (c.meta.status !== "success") {
+      throw new VerificationError(
+        "FAILED_SHARD",
+        "shard " + c.shard + " reported status " + c.meta.status,
+        { shard: c.shard, error: c.meta.error },
+      );
+    }
+    // Per-shard assignment: reported completions must be exactly this shard's
+    // planned tasks — not another shard's, and not the global set.
+    const planned = new Set(m.tasks.map((t) => t.id));
+    const reported = c.meta.completedTaskIds;
+    const notMine = reported.filter((id) => !planned.has(id));
+    if (notMine.length > 0) {
+      throw new VerificationError(
+        "SHARD_ASSIGNMENT_MISMATCH",
+        "shard " + c.shard + " reported tasks not in its manifest: " + notMine.slice(0, 10).join(", "),
+        { shard: c.shard, notMine: notMine.slice(0, 20) },
+      );
+    }
+    const notDone = [...planned].filter((id) => !reported.includes(id));
+    if (notDone.length > 0) {
+      throw new VerificationError(
+        "MISSING_TASKS",
+        "shard " + c.shard + " did not report " + notDone.length + " of its planned tasks",
+        { shard: c.shard, missing: notDone.slice(0, 20), totalMissing: notDone.length },
+      );
+    }
+    for (const id of reported) completedGlobal.add(id);
   }
 
-  // Task coverage
-  const expectedTasks = manifests.flatMap((m) => m.tasks.map((t) => t.id));
-  const expectedSet = new Set(expectedTasks);
-  const completed = collected.flatMap((c) => c.meta.completedTaskIds);
-  const completedSet = new Set(completed);
-
-  const duplicateTasks = [...new Set(completed.filter((id, i) => completed.indexOf(id) !== i))];
-  if (duplicateTasks.length > 0) {
-    throw new VerificationError("DUPLICATE_TASKS", "tasks processed more than once", {
-      duplicates: duplicateTasks.slice(0, 20),
-      totalDuplicates: duplicateTasks.length,
-    });
-  }
-
-  const missingTasks = [...expectedSet].filter((id) => !completedSet.has(id));
-  const unexpectedTasks = [...completedSet].filter((id) => !expectedSet.has(id));
-  if (missingTasks.length > 0 || unexpectedTasks.length > 0) {
+  // Global coverage as defense in depth.
+  const missingGlobal = [...expectedTasksGlobal].filter((id) => !completedGlobal.has(id));
+  if (missingGlobal.length > 0) {
     const err = new VerificationError(
       "MISSING_TASKS",
-      "task coverage mismatch: " +
-        missingTasks.length + " missing, " + unexpectedTasks.length + " unexpected",
-      {
-        expected: expectedSet.size,
-        received: completedSet.size,
-        missing: missingTasks.slice(0, 20),
-        unexpected: unexpectedTasks.slice(0, 20),
-        totalMissing: missingTasks.length,
-      },
+      "global coverage mismatch: " + missingGlobal.length + " tasks not reported complete",
+      { missing: missingGlobal.slice(0, 20), totalMissing: missingGlobal.length },
     );
     err.name = "ActionBundleVerificationError";
     throw err;
@@ -85,11 +143,8 @@ export function verifyShards(opts: {
   return {
     ok: true,
     shardCount,
-    expectedTasks: expectedSet.size,
-    verifiedTasks: completedSet.size,
-    missingShards: [],
-    missingTasks: [],
-    duplicateTasks: [],
+    expectedTasks: expectedTasksGlobal.size,
+    verifiedTasks: completedGlobal.size,
   };
 }
 

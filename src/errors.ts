@@ -13,6 +13,11 @@ export type ErrorCode =
   | "MALFORMED_RESULT"
   | "INCOMPATIBLE_VERSION"
   | "UNEXPECTED_SHARD_COUNT"
+  | "RUN_ID_MISMATCH"
+  | "MANIFEST_DIGEST_MISMATCH"
+  | "FAILED_SHARD"
+  | "SHARD_ASSIGNMENT_MISMATCH"
+  | "OVERSIZED_INPUT"
   | "REDUCTION_ERROR"
   | "WORKER_ERROR";
 
@@ -70,4 +75,3 @@ export class ReductionError extends ActionBundleError {
     this.name = "ReductionError";
   }
 }
-

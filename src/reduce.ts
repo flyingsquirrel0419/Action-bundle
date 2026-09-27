@@ -1,10 +1,15 @@
-import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, stat, access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ReductionError } from "./errors.js";
 
 const execFileAsync = promisify(execFile);
+
+/** Per-shard output size ceiling (bytes) to bound reduction memory. */
+export const MAX_SHARD_BYTES = 64 * 1024 * 1024;
+/** Total bytes across all shards for in-memory reducers. */
+export const MAX_TOTAL_RESULT_BYTES = 256 * 1024 * 1024;
 
 export type BuiltinReducer = "concat" | "json-array" | "json-object" | "files" | "none";
 
@@ -126,15 +131,33 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
           error: e instanceof Error ? e.message : String(e),
         });
       }
+      // Postcondition: a successful custom reducer must actually produce output.
+      try {
+        await access(opts.outPath);
+      } catch {
+        throw new ReductionError(
+          "custom reduce command exited 0 but did not create " + opts.outPath,
+          { outPath: opts.outPath },
+        );
+      }
       return { outPath: opts.outPath, strategy };
     }
   }
 }
 
 async function readShardOutput(partsDir: string, shard: number, name: string): Promise<string> {
+  const path = join(partsDir, "shard-" + shard, name);
   try {
-    return await readFile(join(partsDir, "shard-" + shard, name), "utf8");
-  } catch {
+    const st = await stat(path);
+    if (st.size > MAX_SHARD_BYTES) {
+      throw new ReductionError(
+        "shard " + shard + " output " + name + " exceeds the " + MAX_SHARD_BYTES + "-byte limit",
+        { shard, name, bytes: st.size, max: MAX_SHARD_BYTES },
+      );
+    }
+    return await readFile(path, "utf8");
+  } catch (e) {
+    if (e instanceof ReductionError) throw e;
     throw new ReductionError("shard " + shard + " missing expected output " + name, {
       shard,
       name,
