@@ -1,0 +1,4 @@
+parts/
+bundle.json
+__pycache__/
+.claude-flow/
