@@ -72,9 +72,13 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
   const started = new Date();
   await mkdir(outDir, { recursive: true });
 
-  const manifestPath = join(outDir, "manifest.json");
+  // Absolute paths: the worker command may run in a different cwd
+  // (e.g. the caller workspace), so env vars must not be relative.
+  const { resolve } = await import("node:path");
+  const manifestPath = resolve(outDir, "manifest.json");
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
-  const completionsPath = join(outDir, "completions.json");
+  const completionsPath = resolve(outDir, "completions.json");
+  const absOutDir = resolve(outDir);
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -83,7 +87,7 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
     [WORKER_ENV.SHARD_COUNT]: String(manifest.shardCount),
     [WORKER_ENV.RUN_ID]: manifest.runId,
     [WORKER_ENV.MANIFEST]: manifestPath,
-    [WORKER_ENV.OUTPUT_DIR]: outDir,
+    [WORKER_ENV.OUTPUT_DIR]: absOutDir,
     [WORKER_ENV.COMPLETIONS]: completionsPath,
   };
 
@@ -173,6 +177,10 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
   await writeFile(metaPath, JSON.stringify(meta, null, 2));
   log("completed: " + meta.completedTaskIds.length + "/" + meta.taskCount);
   log("duration: " + (meta.durationMs / 1000).toFixed(1) + "s");
+  // A failed worker command must fail the surrounding step, not just record it.
+  if (status === "failed") {
+    throw new WorkerError("worker command failed", { error });
+  }
   return meta;
 }
 
