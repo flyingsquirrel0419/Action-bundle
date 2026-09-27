@@ -42,5 +42,17 @@ Security boundaries this project handles:
   about doing the work is out of scope (no Byzantine fault tolerance).
 - Worker commands are arbitrary code by design. Do not run the workflow
   with write permissions or secrets on untrusted (fork) pull requests.
+- **Runtime/workspace separation**: the reusable workflow checks out the
+  Action-bundle runtime from the canonical Action-bundle repository into
+  `runtime/` (`persist-credentials: false`), never from the caller repo.
+  Caller code lives in `workspace/` and only runs as the configured worker
+  command.
+- **Identity binding**: results are bound to the plan via `runId` +
+  `manifestDigest` (sha256 of the canonical manifest). Mixed-run artifacts,
+  wrong-shard assignments, and failed shards are rejected.
+- **Completion protocol**: workers report completed tasks via
+  `$ACTION_BUNDLE_COMPLETIONS`; exiting 0 no longer implies all tasks done.
+- Untrusted fork PR workloads should not run on persistent self-hosted
+  runners — GitHub-hosted runners are ephemeral, self-hosted ones are not.
 
 See [docs/security.md](docs/security.md) for the full threat model.

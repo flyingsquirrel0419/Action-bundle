@@ -17,7 +17,9 @@ export { partition, shardOf } from "./partition.js";
 
 export {
   MANIFEST_VERSION,
+  canonicalize,
   createManifest,
+  manifestDigest,
   parseManifest,
   runIdFor,
 } from "./manifest.js";
@@ -37,4 +39,3 @@ export type { VerificationReport } from "./verify.js";
 
 export { reduceResults } from "./reduce.js";
 export type { BuiltinReducer, ReduceOptions } from "./reduce.js";
-
