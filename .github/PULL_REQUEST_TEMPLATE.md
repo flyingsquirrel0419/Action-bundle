@@ -1,15 +1,15 @@
-## 변경 요약
+## Summary
 
-<!-- 무엇을, 왜 바꿨는지 1~3문장으로 -->
+<!-- What changed and why, in 1-3 sentences -->
 
-## 검증
+## Verification
 
-<!-- 실제로 실행한 확인. 예: -->
+<!-- What you actually ran. For example: -->
 
-- [ ] `npm test` 통과 (build + smoke)
-- [ ] `npm run check` 타입 체크 통과
+- [ ] `npm test` passes (build + unit/integration)
+- [ ] `npm run check` typecheck passes
 
-## 사용자에게 보이는 변화
+## User-facing impact
 
-<!-- CLI 출력, API 시그니처, 워크플로우 동작 등. 없으면 "없음" -->
+<!-- CLI output, API signatures, workflow behavior, etc. Write "none" if internal only -->
 

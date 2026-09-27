@@ -1,34 +1,42 @@
-# 보안 정책 (Security Policy)
+# Security Policy
 
-## 지원 버전
+## Supported versions
 
-| 버전 | 지원 |
+| Version | Supported |
 |---|---|
-| 0.1.x (최신) | ✓ |
-| < 0.1 | ✗ |
+| 0.2.x (latest) | ✓ |
+| 0.1.x | ✗ |
 
-## 취약점 신고
+## Reporting a vulnerability
 
-공개 GitHub 이슈에 보안 취약점을 올리지 마라.
+Do not open public GitHub issues for security vulnerabilities.
 
-권장 경로: 이 저장소의 **Security → Report a vulnerability**
-(GitHub 비공개 취약점 신고)를 사용한다.
+Preferred channel: use this repository's **Security → Report a vulnerability**
+(GitHub private vulnerability reporting).
 
-신고에 포함해 주면 좋은 것:
+What to include:
 
-- 영향 받는 버전/커밋
-- 재현 방법 또는 PoC
-- 영향 범위 (예: 번들 검증 우회, 워크플로우 권한 상승)
-- 민감정보가 포함된 로그는 마스킹 후 첨부
+- Affected version/commit
+- Reproduction steps or PoC
+- Impact (e.g. verification bypass, workflow privilege escalation)
+- Sanitize any logs containing secrets
 
-응답 시간을 약속하기는 어렵지만(사이드 프로젝트), 확인하는 대로 회신한다.
+This is a side project, so no response-time promise, but reports are read
+and answered.
 
-## 범위
+## Scope
 
-이 프로젝트가 다루는 보안 경계:
+Security boundaries this project handles:
 
-- `part-N.json` / `bundle.json`은 CI 아티팩트다. 시크릿을 결과에 넣지 마라.
-- 재사용 워크플로우는 `contents: read` 권한만 요청한다. 호출 측 저장소에서
-  추가 권한이 필요하면 호출 측 `permissions:`를 명시적으로 올려야 한다.
-- artifact에는 GitHub의 기본 보관 기간(여기선 7/30일)이 적용된다.
+- `part-N.json` / `result-meta.json` / final results are CI artifacts.
+  Never put secrets into worker outputs.
+- The reusable workflow requests `contents: read` only. If a calling
+  repository needs more, it must raise its own `permissions:` explicitly.
+- Downloaded artifacts are treated as untrusted input: the collector and
+  verifier validate manifest version, shard ids, task-id coverage, and
+  result structure before reduction.
+- Worker commands are arbitrary code by design. Do not run the workflow
+  with write permissions or secrets on untrusted (fork) pull requests.
+
+See [docs/security.md](docs/security.md) for the full threat model.
 

@@ -1,28 +1,28 @@
-name: 버그 리포트 (Bug report)
-description: action-bundle의 동작 문제를 신고한다
+name: Bug report
+description: Report broken behavior in action-bundle
 title: "[bug] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        공개 이슈이므로 시크릿/토큰은 절대 붙여넣지 마라. 보안 문제는
-        [SECURITY.md](../../SECURITY.md)의 비공개 신고 경로를 사용한다.
+        This is a public issue — never paste secrets or tokens. For security
+        reports, use the private channel in [SECURITY.md](../../SECURITY.md).
   - type: textarea
     id: summary
     attributes:
-      label: 무슨 일이 일어났나
-      description: 기대한 동작 vs 실제 동작
+      label: What happened
+      description: Expected behavior vs actual behavior
       placeholder: |
-        기대: bundleFromDir이 8개 part를 병합
-        실제: missing shard parts 오류
+        Expected: bundleFromDir merges 8 parts
+        Actual: MISSING_SHARDS error for shard 3
     validations:
       required: true
   - type: textarea
     id: repro
     attributes:
-      label: 재현 방법
-      description: 명령어, 워크플로우 YAML, 최소 재현
+      label: Reproduction
+      description: Commands, workflow YAML, or minimal repro
       value: |
         1.
         2.
@@ -32,27 +32,32 @@ body:
   - type: input
     id: version
     attributes:
-      label: 버전
-      description: npm 패키지 버전 또는 커밋 SHA
-      placeholder: 0.1.0
+      label: Version
+      description: npm package version or commit SHA
+      placeholder: 0.2.0-beta.1
     validations:
       required: true
+  - type: input
+    id: shards_tasks
+    attributes:
+      label: Shard count / task count
+      placeholder: "8 shards, 10000 tasks"
   - type: dropdown
     id: environment
     attributes:
-      label: 실행 환경
+      label: Environment
       options:
         - GitHub Actions (ubuntu-latest)
         - GitHub Actions (self-hosted)
-        - 로컬 (Linux)
-        - 로컬 (macOS)
-        - 로컬 (Windows)
+        - Local (Linux)
+        - Local (macOS)
+        - Local (Windows)
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: 관련 로그
-      description: 오류 출력을 붙여넣기 (민감정보 마스킹 후)
+      label: Relevant logs
+      description: Error output (sanitize secrets first)
       render: text
 

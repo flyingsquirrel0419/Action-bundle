@@ -1,50 +1,54 @@
-# Contributor Covenant 행동 강령 (Code of Conduct)
+# Contributor Covenant Code of Conduct
 
-## 서약
+## Our Pledge
 
-우리는 오픈하고 welcoming한 커뮤니티를 만들기 위해, 기여자와 유지관리자로서
-나이, 신체 크기, 장애, 민족성, 성적 정체성 및 표현, 경험 수준, 국적,
-외모, 인종, 종교, 성적 지향과 무관하게 모든 사람에게 괴롭힘 없는 경험을
-약속한다.
+We as members, contributors, and leaders pledge to make participation in our
+community a harassment-free experience for everyone, regardless of age, body
+size, visible or invisible disability, ethnicity, sex characteristics, gender
+identity and expression, level of experience, education, socio-economic
+status, nationality, personal appearance, race, religion, or sexual identity
+and orientation.
 
-## 기준
+## Our Standards
 
-긍정적 환경을 만드는 행동:
+Examples of behavior that contributes to a positive environment:
 
-- welcoming하고 포용적인 언어 사용
-- 다른 관점과 경험 존중
-- 건설적 비판을 품위 있게 수용
-- 커뮤니티에 최선인 것에 집중
+- Using welcoming and inclusive language
+- Being respectful of differing viewpoints and experiences
+- Gracefully accepting constructive criticism
+- Focusing on what is best for the community
 
-용납되지 않는 행동:
+Examples of unacceptable behavior:
 
-- 성적ized 언어·이미지, 원치 않는 성적 관심이나 접근
-- 트롤링, 모욕, 인신공격, 정치적 공격
-- 공개/비공개 괴롭힘
-- 명시적 허가 없는 타인의 개인정보 공개 (doxxing)
-- 프로 맥락에서 부적절하다고 합리적으로 판단되는 기타 행동
+- Sexualized language or imagery, and unwelcome sexual attention or advances
+- Trolling, insulting or derogatory comments, and personal or political attacks
+- Public or private harassment
+- Publishing others' private information without explicit permission
+- Other conduct which could reasonably be considered inappropriate in a
+  professional setting
 
-## 책임
+## Enforcement Responsibilities
 
-유지관리자는 이 행동 강령을 위반하는 댓글, 커밋, 코드, 이슈를 제거·수정·거부할
-권리와 책임이 있으며, 부적절하다고 판단되는 행동에 대해 일시적 또는 영구적
-차단 등 공정하고 적절한 시정 조치를 취한다.
+Project maintainers are responsible for clarifying and enforcing our standards
+and will take appropriate and fair corrective action in response to any
+behavior they deem inappropriate, threatening, offensive, or harmful.
 
-## 범위
+## Scope
 
-프로젝트 공간(이슈, PR, 코드 리뷰) 및 개인이 프로젝트를 대표하는 공공 공간에
-적용된다.
+This Code of Conduct applies within all project spaces (issues, PRs, code
+review) and in public spaces when an individual is representing the project.
 
-## 집행
+## Enforcement
 
-위반 사례는 저장소 소유자([@flyingsquirrel0419](https://github.com/flyingsquirrel0419))에게
-GitHub 이슈가 아닌 비공개 수단(DM 또는 저장소 Security 탭의 비공개 신고)으로
-신고해 달라. 모든 신고는 검토되며, 신고자의 프라이버시를 존중한다.
+Report violations privately to the repository owner
+([@flyingsquirrel0419](https://github.com/flyingsquirrel0419)) — not via a
+public issue; use a private channel (GitHub private vulnerability reporting
+works too). All reports are reviewed and handled with respect for the
+reporter's privacy.
 
-## 출처
+## Attribution
 
-이 행동 강령은 [Contributor Covenant](https://www.contributor-covenant.org)
-버전 2.1을 바탕으로 하며, 원문은
-https://www.contributor-covenant.org/version/2/1/code_of_conduct.html 에서
-확인할 수 있다.
+This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org),
+version 2.1, available at
+https://www.contributor-covenant.org/version/2/1/code_of_conduct.html.
 
