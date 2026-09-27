@@ -4,12 +4,9 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versions follow [Semantic Versioning](https://semver.org/).
 
+Nothing is released yet — everything below is unreleased.
+
 ## [Unreleased]
-
-## [0.2.0-beta.1] - 2026-09-27
-
-Full rewrite: Action-bundle is now a generic distributed compute layer on
-top of GitHub Actions, not a JSON shard/merge helper.
 
 ### Added
 
@@ -29,30 +26,12 @@ top of GitHub Actions, not a JSON shard/merge helper.
   architecture, reducers, worker-contract, retries, security, troubleshooting
 - 19 unit + integration tests covering partition invariants (union = input,
   disjoint shards, determinism) and every verification failure mode
+- Measured benchmark (20,000 CPU-bound items): 1 shard 100.0s compute →
+  16 shards 6.6s; full wall-clock 127s → 68s
 
-### Changed (breaking)
+### Notes
 
-- v1 API (`runShard`, `runShardToFile`, `bundleParts`, `bundleFromDir`,
-  numeric `shardOf`) removed — replaced by the worker-command model
-- CLI commands `work` / `bundle` replaced by `plan` / `worker` /
-  `verify` / `reduce`
-- English is the documentation language; Korean/Chinese READMEs removed
-
-### Removed
-
-- Python reference implementation (`tools/`), `docs/usage.md`,
-  `examples/use-bundle.yml`, `PLAN.md`
-
-## [0.1.0] - 2026-09-27
-
-### Added
-
-- Initial proof of concept: shard a workload across a GitHub Actions matrix,
-  merge JSON results, verify coverage
-- Measured benchmark (20,000 items): 1 shard 100.0s compute → 16 shards
-  6.6s; full wall-clock 127s → 68s
-
-[Unreleased]: https://github.com/flyingsquirrel0419/Action-bundle/compare/v0.2.0-beta.1...HEAD
-[0.2.0-beta.1]: https://github.com/flyingsquirrel0419/Action-bundle/compare/v0.1.0...v0.2.0-beta.1
-[0.1.0]: https://github.com/flyingsquirrel0419/Action-bundle/releases/tag/v0.1.0
+- This repository started as a JSON shard/merge proof of concept and was
+  rewritten into a generic distributed compute layer before any release.
+  No stable release exists yet; the first tag will be cut from Unreleased.
 
