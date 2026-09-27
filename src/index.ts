@@ -1,14 +1,40 @@
+// Public API — small primitives, strict types, no internal leaks.
 export {
-  itemBelongsToShard,
-  itemsForShard,
-  shardOf,
-} from "./shard.js";
+  ActionBundleError,
+  CollectionError,
+  ConfigurationError,
+  ManifestError,
+  PlanningError,
+  ReductionError,
+  VerificationError,
+} from "./errors.js";
+export type { ErrorCode } from "./errors.js";
+
+export type { Task, Workload } from "./task.js";
+export { workloadToTasks } from "./task.js";
+
+export { partition, shardOf } from "./partition.js";
+
 export {
-  defaultProcessItem,
-  runShard,
-  runShardToFile,
-} from "./work.js";
-export type { PartFile, ShardResultItem, WorkOptions } from "./work.js";
-export { BundleError, bundleFromDir, bundleParts } from "./bundle.js";
-export type { BundleResult } from "./bundle.js";
+  MANIFEST_VERSION,
+  createManifest,
+  parseManifest,
+  runIdFor,
+} from "./manifest.js";
+export type { ShardManifest } from "./manifest.js";
+
+export { createPlan } from "./planner.js";
+export type { Plan, PlanOptions } from "./planner.js";
+
+export { WORKER_ENV, WorkerError, digestRounds, runWorker } from "./worker.js";
+export type { ShardResultMeta, WorkerRunOptions } from "./worker.js";
+
+export { collectFromDir } from "./collector.js";
+export type { CollectedShard } from "./collector.js";
+
+export { verifyShards } from "./verify.js";
+export type { VerificationReport } from "./verify.js";
+
+export { reduceResults } from "./reduce.js";
+export type { BuiltinReducer, ReduceOptions } from "./reduce.js";
 

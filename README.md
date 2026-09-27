@@ -1,132 +1,132 @@
 <div align="center">
 
-# action-bundle
+# Action-bundle
 
-**Split one job into N parallel GitHub Actions shards, then merge the results into a single bundle**
+**Turn GitHub Actions into a distributed compute pool.**
 
-[English](README.md) · [한국어](README_KO.md) · [简体中文](README_ZH.md)
-
-[![shard-and-bundle](https://github.com/flyingsquirrel0419/Action-bundle/actions/workflows/bundle.yml/badge.svg)](https://github.com/flyingsquirrel0419/Action-bundle/actions/workflows/bundle.yml)
+[![action-bundle](https://github.com/flyingsquirrel0419/Action-bundle/actions/workflows/run.yml/badge.svg)](https://github.com/flyingsquirrel0419/Action-bundle/actions/workflows/run.yml)
 [![npm version](https://img.shields.io/npm/v/action-bundle.svg)](https://www.npmjs.com/package/action-bundle)
 [![license](https://img.shields.io/npm/l/action-bundle.svg)](LICENSE)
 
 </div>
 
-GitHub Actions standard runners are free for public repositories.
-`action-bundle` turns that into a fan-out/fan-in pattern: split a large job
-across a matrix of shard jobs, upload each partial result as an artifact,
-then merge and verify everything in one aggregate job. Ships as a library,
-a CLI, and a reusable workflow.
+Give Action-bundle one workload. GitHub Actions runs it in parallel across
+many runners. You get one verified result back.
 
 ```
-setup ──▶ shard(0..N-1) in parallel ──▶ aggregate ──▶ bundle.json
-           (each uploads part-N.json)   (downloads all, merges, verifies)
+                 ┌─ Runner 0 ─┐
+Workload ─ Split ├─ Runner 1 ─┼─ Collect ─ Verify ─ Reduce ─ Result
+                 ├─ Runner 2 ─┤
+                 └─ Runner N ─┘
 ```
 
-## Install
+GitHub Actions' `matrix` creates parallel jobs; Action-bundle is the layer
+above it that handles the parts everyone rewrites by hand — deterministic
+partitioning, a versioned per-shard manifest, a language-agnostic worker
+contract, artifact collection, completeness verification, and reduction —
+so you never design matrix plumbing again.
 
-```bash
-npm install action-bundle
-# or just the CLI
-npx action-bundle --help
-```
+## 30-second quickstart
 
-Requires Node.js 20 or later.
-
-## Quickstart (library)
-
-```ts
-import { runShardToFile, bundleFromDir } from "action-bundle";
-
-// In each GitHub Actions shard job:
-await runShardToFile({
-  shardIndex: Number(process.env.SHARD_INDEX),  // matrix value
-  shardCount: Number(process.env.SHARD_COUNT),
-  itemCount: 1000,
-  outDir: "parts",
-  processItem: (id) => myRealWork(id),          // replace with real work
-});
-
-// In the aggregate job, after downloading every part-N.json:
-const bundle = await bundleFromDir({
-  partsDir: "parts",
-  shardCount: 8,
-  itemCount: 1000,
-  outPath: "bundle.json",
-});
-console.log(bundle.totalProcessed); // 1000 — BundleError on gaps/dupes
-```
-
-## Quickstart (CLI)
-
-```bash
-# Run 4 shards locally, sequentially
-for i in 0 1 2 3; do
-  npx action-bundle work --shard-index $i --shard-count 4 --item-count 100
-done
-
-# Merge and verify
-npx action-bundle bundle --parts-dir parts --shard-count 4 --item-count 100
-# → bundle complete: 100 items from 4 shards
-```
-
-## Use in GitHub Actions (reusable workflow)
-
-This repo's workflow supports `workflow_call`. In any other repository,
-drop one file into `.github/workflows/`:
+Use the reusable workflow from any repository (no library install):
 
 ```yaml
+# .github/workflows/distribute.yml
+name: distribute
+on:
+  workflow_dispatch:
+
 jobs:
-  bundle:
-    uses: flyingsquirrel0419/Action-bundle/.github/workflows/bundle.yml@main
+  compute:
+    uses: flyingsquirrel0419/Action-bundle/.github/workflows/run.yml@main
     with:
-      shard_count: "8"
-      item_count: "200"
+      workload: '{"kind":"index","count":2000}'
+      shards: "8"
+      reducer: "json-array"
 ```
 
-Full example: [examples/use-bundle.yml](examples/use-bundle.yml).
-To build your own matrix workflow around the library, see [docs/usage.md](docs/usage.md).
+The run splits 2,000 tasks across 8 runners, executes the bundled demo worker,
+verifies every task ran exactly once, and uploads `final-result.json`.
+To run **your** code instead of the demo worker, use the library + CLI in your
+own workflow — see [docs/github-actions.md](docs/github-actions.md).
 
-## Benchmark: why shard
+## The pieces
 
-Real runs on GitHub-hosted runners, 20 000 items at intensity 10 000
-(sha256 × 10 000 per item, ~5ms of CPU each):
-
-| Shards | Compute (slowest shard) | Full run wall-clock | Ideal speedup | Run |
-|---|---|---|---|---|
-| 1 | 100.0s | 127s | 1.0x | [36290116153](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290116153) |
-| 4 | 25.9s | 87s | 3.6x | [36290117427](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290117427) |
-| 16 | 6.6s | 68s | 14.0x | [36290118749](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290118749) |
-
-Compute time scales almost linearly with shard count — this is the free
-parallelism public repos get. The remaining wall-clock is fixed overhead
-(runner boot, checkout, artifact transfer): tens of seconds per run, so the
-pattern pays off once each job would otherwise take minutes (large test
-suites, build matrices). For tiny workloads that overhead dominates instead.
-
-Reproduce with your own numbers: **Actions → shard-and-bundle → Run workflow**
-and set `work_intensity` / `item_count`.
-
-## API at a glance
-
-| Function | Purpose |
+| | |
 |---|---|
-| `runShard(opts)` | Run this shard's share, return the partial result |
-| `runShardToFile(opts)` | Same, then write `part-<index>.json` |
-| `bundleParts(parts, shardCount, itemCount)` | Merge + verify an array of parts |
-| `bundleFromDir(opts)` | Read `part-*.json` from a directory and merge |
-| `shardOf(itemId, shardCount)` | Deterministic shard assignment for an item |
+| **Planner** | Turns a workload (index range, list, or explicit tasks) + shard count (or `auto`) into a deterministic execution plan |
+| **Partitioner** | `sha1(taskId) % shards` — same input, same assignment, every run |
+| **Manifest** | Versioned JSON per shard: `{version, runId, shardIndex, shardCount, tasks}` |
+| **Worker** | Your command, any language, with `ACTION_BUNDLE_*` env vars set |
+| **Collector** | Downloads every shard's `result-meta.json` |
+| **Verifier** | Fails loudly on missing/duplicate shards or tasks, with actionable details |
+| **Reducer** | `concat`, `json-array`, `json-object`, `files`, `none`, or your own command |
 
-Full options and error behavior: [docs/usage.md](docs/usage.md).
+## CLI
+
+```bash
+npm install action-bundle   # or npx action-bundle ...
+
+# See how a workload would be split
+action-bundle plan workload.json --shards 8
+
+# The three commands the workflow uses internally
+action-bundle worker --manifest manifest-0.json --command "python3 process.py" --out-dir out
+action-bundle verify --parts-dir parts/ --shard-count 8 --manifests-dir manifests/
+action-bundle reduce --parts-dir parts/ --shard-count 8 --strategy json-array --out result.json
+```
+
+Exit codes: `0` success · `2` invalid configuration/usage · `3` verification failure · `4` execution/reduction failure.
+
+## Library
+
+```ts
+import { createPlan, partition, verifyShards, reduceResults } from "action-bundle";
+
+const plan = createPlan({ workload: { kind: "index", count: 10_000 }, shards: "auto" });
+```
+
+Full API: [docs/library.md](docs/library.md). Worker environment variables:
+[docs/worker-contract.md](docs/worker-contract.md).
+
+## Benchmark (measured, not marketed)
+
+Real GitHub-hosted runners, 20,000 CPU-bound tasks (~5ms each):
+
+| Shards | Compute (slowest shard) | Full run wall-clock | Speedup |
+|---|---|---|---|
+| 1 | 100.0s | 127s | 1.0x |
+| 4 | 25.9s | 87s | 3.6x |
+| 16 | 6.6s | 68s | 14.0x |
+
+Compute time scales almost linearly; wall-clock does not, because every run
+pays ~60s of fixed overhead (runner boot, checkout, setup, artifact transfer).
+**Shard when per-shard compute is minutes, not seconds.** Methodology and run
+links: [benchmarks/README.md](benchmarks/README.md).
+
+## When to use it
+
+Workloads that already belong in CI and take long enough to matter: large test
+suites, build matrices, static analysis over many files, batch repository
+processing, code generation, data preparation.
+
+When **not**: sub-minute jobs (overhead dominates), and anything outside
+GitHub's usage policies — this is for legitimate repository workloads, not a
+free compute farm. Action-bundle is not Kubernetes/Ray/Spark; it is the thin
+layer for work that already lives in GitHub Actions.
 
 ## Docs
 
-- [docs/usage.md](docs/usage.md) — detailed usage, workflow integration, troubleshooting
-- [PLAN.md](PLAN.md) — design plan and measurement goals
-- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
-- [SECURITY.md](SECURITY.md) — report security issues
-- [CHANGELOG.md](CHANGELOG.md) — release history
+- [docs/concepts.md](docs/concepts.md) — the mental model
+- [docs/getting-started.md](docs/getting-started.md) — adopt it in your repo
+- [docs/github-actions.md](docs/github-actions.md) — workflows, limits, custom workers
+- [docs/cli.md](docs/cli.md) · [docs/library.md](docs/library.md)
+- [docs/reducers.md](docs/reducers.md) · [docs/worker-contract.md](docs/worker-contract.md)
+- [docs/architecture.md](docs/architecture.md) — why matrix + artifacts, no server
+- [docs/retries.md](docs/retries.md) — what retry/resume looks like today
+- [docs/security.md](docs/security.md) · [docs/troubleshooting.md](docs/troubleshooting.md)
 
-## License
+## Contributing / Security / License
 
-[MIT](LICENSE)
+[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [MIT](LICENSE)
+

@@ -1,7 +1,7 @@
 {
   "name": "action-bundle",
-  "version": "0.1.0",
-  "description": "Split one job into N parallel GitHub Actions shards and merge the results into a single bundle.",
+  "version": "0.2.0-beta.1",
+  "description": "Turn GitHub Actions into a distributed compute pool: split one workload across many runners, verify the parts, reduce them into one result.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./planner": {
+      "types": "./dist/planner.d.ts",
+      "default": "./dist/planner.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "default": "./dist/manifest.js"
     }
   },
   "bin": {
@@ -23,18 +31,22 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node test/smoke.mjs",
-    "prepublishOnly": "npm test"
+    "test": "npm run build && node --test \"tests/*.test.mjs\"",
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm test && npm run pack:check"
   },
   "keywords": [
     "github-actions",
+    "distributed-computing",
     "sharding",
     "matrix",
     "parallel",
-    "bundle",
     "ci",
+    "ci-cd",
     "fan-out",
-    "fan-in"
+    "fan-in",
+    "map-reduce",
+    "typescript"
   ],
   "license": "MIT",
   "repository": {

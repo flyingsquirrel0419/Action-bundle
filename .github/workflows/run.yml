@@ -1,0 +1,163 @@
+name: action-bundle
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      workload:
+        description: "Workload JSON: {kind:index,count:N} | {kind:list,items:[...]} | {kind:tasks,tasks:[{id,...}]}"
+        required: true
+        default: '{"kind":"index","count":2000}'
+        type: string
+      shards:
+        description: "Shard count, or auto"
+        required: true
+        default: "8"
+        type: string
+      intensity:
+        description: "Benchmark hash rounds per task (CPU weight)"
+        required: true
+        default: "200"
+        type: string
+      reducer:
+        description: "Builtin reducer: json-array | concat | json-object | files | none"
+        required: true
+        default: "json-array"
+        type: string
+  workflow_call:
+    inputs:
+      workload:
+        description: "Workload JSON"
+        required: false
+        default: '{"kind":"index","count":2000}'
+        type: string
+      shards:
+        description: "Shard count, or auto"
+        required: false
+        default: "8"
+        type: string
+      intensity:
+        description: "Benchmark hash rounds per task"
+        required: false
+        default: "200"
+        type: string
+      reducer:
+        description: "Builtin reducer"
+        required: false
+        default: "json-array"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shard_count: ${{ steps.plan.outputs.shard_count }}
+      run_id: ${{ steps.plan.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci && npm run build
+      - name: Build execution plan
+        id: plan
+        env:
+          WORKLOAD: ${{ inputs.workload }}
+          SHARDS: ${{ inputs.shards }}
+        run: node scripts/plan.mjs
+      - name: Upload manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: ab-manifests
+          path: manifests/
+          retention-days: 7
+
+  shard:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci && npm run build
+      - name: Download manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: ab-manifests
+          path: manifests/
+      - name: Run shard ${{ matrix.shard }}
+        env:
+          INTENSITY: ${{ inputs.intensity }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          node dist/cli.js worker \
+            --manifest manifests/manifest-${SHARD}.json \
+            --out-dir out \
+            --command "node examples/benchmark/worker.mjs"
+      - name: Upload shard result
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard }}
+          path: out/
+          retention-days: 7
+
+  aggregate:
+    needs: [setup, shard]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci && npm run build
+      - name: Download all shard results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          path: parts/
+      - name: Download manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: ab-manifests
+          path: manifests/
+      - name: Verify completeness
+        run: |
+          node dist/cli.js verify \
+            --parts-dir parts/ \
+            --shard-count ${{ needs.setup.outputs.shard_count }} \
+            --manifests-dir manifests/
+      - name: Reduce results
+        env:
+          REDUCER: ${{ inputs.reducer }}
+        run: |
+          node dist/cli.js reduce \
+            --parts-dir parts/ \
+            --shard-count ${{ needs.setup.outputs.shard_count }} \
+            --strategy "$REDUCER" \
+            --out final-result.json
+      - name: Write summary
+        run: |
+          {
+            echo "## Action-bundle run"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Run ID | \`${{ needs.setup.outputs.run_id }}\` |"
+            echo "| Shards | \`${{ needs.setup.outputs.shard_count }}\` |"
+            echo "| Reducer | \`${{ inputs.reducer }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload final result
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-result
+          path: final-result.json
+          retention-days: 30
+
