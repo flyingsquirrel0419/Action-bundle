@@ -44,7 +44,7 @@ function usage(): never {
       "  plan     <workload.json> --shards 8 [--max-shards 32] [--min-tasks-per-shard 1]",
       "  worker   --manifest manifest.json [--command \"sh ...\"] --out-dir dir [--cwd dir]",
       "  verify   --parts-dir dir --shard-count 8 --manifests-dir dir [--expect-output output.json]",
-      "  reduce   --parts-dir dir --shard-count 8 [--strategy concat|json-array|json-object|files|none] [--command \"sh ...\"] --out result",
+      "  reduce   --parts-dir dir --shard-count 8 [--strategy concat|json-array|json-object|files|none] [--command \"sh ...\"] [--cwd dir] --out result",
       "",
       "Workload file: {\"kind\":\"index\",\"count\":1000} | {\"kind\":\"list\",\"items\":[...]} | {\"kind\":\"tasks\",\"tasks\":[{\"id\":...}]}",
       "",
@@ -156,6 +156,7 @@ async function main(): Promise<void> {
       strategy: flags.strategy as BuiltinReducer | undefined,
       command: flags.command,
       outPath: flags.out ?? "bundle-result.json",
+      cwd: flags.cwd,
     });
     console.log("[action-bundle] reduction complete: " + res.strategy + " -> " + res.outPath);
     return;

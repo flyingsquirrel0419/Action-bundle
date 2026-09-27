@@ -195,3 +195,54 @@ test("reduce: custom command exiting 0 without creating output is rejected", asy
     (e) => e.code === "REDUCTION_ERROR" && /did not create/.test(e.message),
   );
 });
+
+test("worker: failed command writes failed metadata AND throws", async () => {
+  const dir = await tmpDir("ab-wfail-");
+  const m = createManifest({ runId: "run-f", shardIndex: 0, shardCount: 1, tasks: [{ id: "a" }] });
+  const outDir = join(dir, "shard-0");
+  await assert.rejects(
+    () => runWorker({ manifest: m, outDir, command: "echo worker-failure >&2; exit 17" }),
+    (e) => e.code === "WORKER_ERROR",
+  );
+  const meta = JSON.parse(await readFile(join(outDir, "result-meta.json"), "utf8"));
+  assert.equal(meta.status, "failed");
+  assert.ok(meta.error, "error recorded");
+  assert.equal(meta.shard, 0);
+});
+
+test("reduce: custom reducer runs with cwd and absolute env paths", async () => {
+  const dir = await tmpDir("ab-redcwd-");
+  const ws = join(dir, "workspace");
+  const parts = join(dir, "parts");
+  await mkdir(ws, { recursive: true });
+  await mkdir(join(parts, "shard-0"), { recursive: true });
+  await writeFile(join(parts, "shard-0", "output.txt"), "hello");
+  // Reducer script lives in workspace/ and is invoked by relative path.
+  await writeFile(join(ws, "merge.sh"), [
+    "#!/bin/sh",
+    "set -eu",
+    "echo cwd=$(pwd) > \"" + "$ACTION_BUNDLE_OUTPUT" + "\"",
+    "echo results=$ACTION_BUNDLE_RESULTS >> \"$ACTION_BUNDLE_OUTPUT\"",
+    "cat $ACTION_BUNDLE_RESULTS/shard-0/output.txt >> \"$ACTION_BUNDLE_OUTPUT\"",
+  ].join("\n"));
+  const outPath = join(dir, "final.txt");
+  await reduceResults({ partsDir: parts, shardCount: 1, command: "sh merge.sh", outPath, cwd: ws });
+  const result = await readFile(outPath, "utf8");
+  assert.ok(result.includes("cwd=" + ws), "reducer ran in workspace");
+  assert.ok(result.includes("results=" + parts), "ACTION_BUNDLE_RESULTS is absolute");
+  assert.ok(result.includes("hello"), "reducer read shard output");
+});
+
+test("reduce: invalid cwd fails clearly", async () => {
+  const dir = await tmpDir("ab-badcwd-");
+  await assert.rejects(
+    () => reduceResults({ partsDir: dir, shardCount: 1, command: "true", outPath: join(dir, "o"), cwd: join(dir, "nonexistent") }),
+    (e) => e.code === "REDUCTION_ERROR" && /cwd does not exist/.test(e.message),
+  );
+  const file = join(dir, "afile");
+  await writeFile(file, "x");
+  await assert.rejects(
+    () => reduceResults({ partsDir: dir, shardCount: 1, command: "true", outPath: join(dir, "o"), cwd: file }),
+    (e) => e.code === "REDUCTION_ERROR" && /not a directory/.test(e.message),
+  );
+});

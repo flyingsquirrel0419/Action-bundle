@@ -69,9 +69,8 @@ jobs:
       shard_count: ${{ steps.plan.outputs.shard_count }}
       run_id: ${{ steps.plan.outputs.run_id }}
     steps:
-      # Resolve the exact Action-bundle source this reusable workflow came from.
-      # github.workflow_ref is 'owner/repo/.github/workflows/x.yml@ref'.
-      # The caller's own repo is NEVER used as the runtime.
+      # The runtime is checked out from the exact reusable-workflow revision
+      # being executed. The caller's own repo is NEVER used as the runtime.
       # job.workflow_repository / job.workflow_sha resolve to the CALLEE
       # (Action-bundle), the exact reusable workflow source. Verified by
       # cross-repo diagnostic run 36304682904.
@@ -126,12 +125,6 @@ jobs:
         with:
           path: workspace/
           persist-credentials: false
-      # Caller workspace for a custom reducer command.
-      - name: Checkout caller workspace
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          path: workspace/
-          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -162,14 +155,21 @@ jobs:
             --cwd workspace \
             --command "$CMD"
       - name: Upload shard result
+        # Upload even when the worker command failed — result-meta.json records
+        # status=failed and the aggregate job must see it.
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: shard-${{ matrix.shard }}
           path: out/
           retention-days: 7
+          if-no-files-found: warn
 
   aggregate:
     needs: [setup, shard]
+    # Run aggregation even when some shard jobs failed (their result-meta.json
+    # is still uploaded), but never when setup failed (no plan exists).
+    if: ${{ always() && needs.setup.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -227,6 +227,7 @@ jobs:
               --parts-dir parts/ \
               --shard-count ${{ needs.setup.outputs.shard_count }} \
               --command "$REDUCE_COMMAND" \
+              --cwd workspace \
               --out final-result.json
           else
             node runtime/dist/cli.js reduce \

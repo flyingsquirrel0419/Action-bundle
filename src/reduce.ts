@@ -1,5 +1,5 @@
 import { readFile, writeFile, readdir, mkdir, stat, access } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ReductionError } from "./errors.js";
@@ -24,6 +24,11 @@ export interface ReduceOptions {
   outPath: string;
   /** Max milliseconds a custom command may run. Default 30 min. */
   timeoutMs?: number;
+  /**
+   * Working directory for a custom reducer command (e.g. the caller
+   * workspace). Built-in reducers ignore this. Must exist and be a directory.
+   */
+  cwd?: string;
 }
 
 const DEFAULT_REDUCE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -135,15 +140,31 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
       return { outPath: opts.outPath, strategy };
     }
     case "custom": {
+      // Validate the working directory before spawning.
+      const cwd = opts.cwd ?? process.cwd();
+      if (opts.cwd !== undefined) {
+        let st;
+        try {
+          st = await stat(cwd);
+        } catch {
+          throw new ReductionError("reducer cwd does not exist: " + cwd, { cwd });
+        }
+        if (!st.isDirectory()) {
+          throw new ReductionError("reducer cwd is not a directory: " + cwd, { cwd });
+        }
+      }
+      // Absolute env paths: the reducer may run in a different cwd, so relative
+      // results/output paths would otherwise break.
       const env = {
         ...process.env,
-        ACTION_BUNDLE_RESULTS: partsDir,
-        ACTION_BUNDLE_OUTPUT: opts.outPath,
+        ACTION_BUNDLE_RESULTS: resolve(partsDir),
+        ACTION_BUNDLE_OUTPUT: resolve(opts.outPath),
         ACTION_BUNDLE_SHARD_COUNT: String(shardCount),
       };
       try {
         const { stdout, stderr } = await execFileAsync("sh", ["-c", opts.command ?? ""], {
           env,
+          cwd,
           maxBuffer: 64 * 1024 * 1024,
           timeout: opts.timeoutMs ?? DEFAULT_REDUCE_TIMEOUT_MS,
           killSignal: "SIGTERM",
