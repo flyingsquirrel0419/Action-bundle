@@ -1,0 +1,52 @@
+{
+  "name": "action-bundle",
+  "version": "0.1.0",
+  "description": "Split one job into N parallel GitHub Actions shards and merge the results into a single bundle.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "action-bundle": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node test/smoke.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "github-actions",
+    "sharding",
+    "matrix",
+    "parallel",
+    "bundle",
+    "ci",
+    "fan-out",
+    "fan-in"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flyingsquirrel0419/Action-bundle.git"
+  },
+  "bugs": {
+    "url": "https://github.com/flyingsquirrel0419/Action-bundle/issues"
+  },
+  "homepage": "https://github.com/flyingsquirrel0419/Action-bundle#readme",
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "typescript": "^5.6.0"
+  }
+}

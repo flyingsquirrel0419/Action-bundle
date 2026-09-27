@@ -2,3 +2,5 @@ parts/
 bundle.json
 __pycache__/
 .claude-flow/
+node_modules/
+dist/
