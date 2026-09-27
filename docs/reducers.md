@@ -17,6 +17,7 @@ Reduction turns verified shard outputs into one artifact.
 action-bundle reduce \
   --parts-dir parts/ --shard-count 8 \
   --command "python3 scripts/merge.py" \
+  --cwd workspace \
   --out final.json
 ```
 
@@ -24,9 +25,14 @@ The custom command receives:
 
 | Variable | Meaning |
 |---|---|
-| `ACTION_BUNDLE_RESULTS` | Directory containing `shard-N/` subdirectories |
-| `ACTION_BUNDLE_OUTPUT` | Where to write the final artifact |
+| `ACTION_BUNDLE_RESULTS` | Directory containing `shard-N/` subdirectories (absolute) |
+| `ACTION_BUNDLE_OUTPUT` | Where to write the final artifact (absolute) |
 | `ACTION_BUNDLE_SHARD_COUNT` | Shard count |
 
-Reduction failures raise `ReductionError` (CLI exit code 4).
+`--cwd` sets the working directory for the custom command (e.g. the caller
+workspace, so `python3 scripts/merge.py` finds your repo's files). Built-in
+reducers ignore it. A custom command that exits 0 without creating
+`ACTION_BUNDLE_OUTPUT` fails with `REDUCTION_ERROR` (CLI exit code 4).
 
+Custom reducers are arbitrary caller code, like workers — the same token
+permissions apply.

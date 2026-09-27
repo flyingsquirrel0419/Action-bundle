@@ -1,5 +1,11 @@
 # Benchmarks
 
+> **Historical.** These numbers were measured with an earlier workflow
+> architecture (before runtime/workspace separation, completion protocol, and
+> failure-handling). They remain directionally valid for compute scaling but
+> the exact wall-clock overhead has changed. The current architecture will be
+> re-benchmarked before a stable release.
+
 ## Methodology
 
 Benchmarks run on GitHub-hosted `ubuntu-latest` runners through the real
@@ -49,4 +55,3 @@ Actions → action-bundle → Run workflow
 
 Each run's Step Summary shows the per-shard table plus the serial-vs-parallel
 estimate automatically.
-
