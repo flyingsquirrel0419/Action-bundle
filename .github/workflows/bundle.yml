@@ -14,6 +14,18 @@ on:
         required: true
         default: "200"
         type: string
+  workflow_call:
+    inputs:
+      shard_count:
+        description: "병렬로 돌릴 샤드 개수"
+        required: false
+        default: "8"
+        type: string
+      item_count:
+        description: "처리할 item 개수 (작업량)"
+        required: false
+        default: "200"
+        type: string
 
 permissions:
   contents: read

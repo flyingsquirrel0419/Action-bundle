@@ -1,0 +1,10 @@
+name: use-bundle
+on:
+  workflow_dispatch:
+
+jobs:
+  bundle:
+    uses: flyingsquirrel0419/Action-bundle/.github/workflows/bundle.yml@main
+    with:
+      shard_count: "8"
+      item_count: "200"
