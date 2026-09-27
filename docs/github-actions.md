@@ -40,6 +40,11 @@ into `runtime/` from the exact reusable-workflow revision
 (`job.workflow_repository` / `job.workflow_sha`) — caller code can never
 replace the runtime.
 
+When `reduce_command` is set it takes over reduction regardless of
+`reducer`, and its `final-result.json` is uploaded as the `final-result`
+artifact — including with `reducer: "none"`. With `reducer: "none"` and no
+`reduce_command`, nothing is reduced or uploaded.
+
 ## Rolling your own (custom worker)
 
 Copy [.github/workflows/run.yml](../.github/workflows/run.yml) and replace

@@ -1,4 +1,4 @@
-import { readFile, access } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { CollectionError } from "./errors.js";
 import type { ShardResultMeta } from "./worker.js";
@@ -7,6 +7,12 @@ export interface CollectedShard {
   shard: number;
   meta: ShardResultMeta;
 }
+
+/**
+ * What a shard must produce for verification. A plain string keeps the
+ * legacy existence-only semantics; a typed requirement also checks the kind.
+ */
+export type ExpectedOutput = string | { type: "file" | "directory"; name: string };
 
 /** Strict runtime validation of result-meta.json (untrusted input). */
 function validateMeta(meta: unknown): ShardResultMeta {
@@ -57,12 +63,15 @@ function validateMeta(meta: unknown): ShardResultMeta {
 export async function collectFromDir(
   dir: string,
   shardCount: number,
-  expectedOutput?: string,
+  expectedOutput?: ExpectedOutput,
 ): Promise<CollectedShard[]> {
   const results: CollectedShard[] = [];
   const missing: number[] = [];
   const malformed: string[] = [];
-  const missingOutput: number[] = [];
+  const missingOutput: string[] = [];
+
+  const expectedName = typeof expectedOutput === "string" ? expectedOutput : expectedOutput?.name;
+  const expectedType = typeof expectedOutput === "string" ? undefined : expectedOutput?.type;
 
   for (let i = 0; i < shardCount; i++) {
     const path = join(dir, "shard-" + i, "result-meta.json");
@@ -85,12 +94,19 @@ export async function collectFromDir(
       }
       results.push({ shard: meta.shard, meta });
 
-      if (expectedOutput && meta.status === "success") {
+      if (expectedName && meta.status === "success") {
+        let why: string | undefined;
         try {
-          await access(join(dir, "shard-" + i, expectedOutput));
+          const st = await stat(join(dir, "shard-" + i, expectedName));
+          if (expectedType === "directory" && !st.isDirectory()) {
+            why = expectedName + " is not a directory";
+          } else if (expectedType === "file" && !st.isFile()) {
+            why = expectedName + " is not a file";
+          }
         } catch {
-          missingOutput.push(i);
+          why = "missing";
         }
+        if (why !== undefined) missingOutput.push("shard-" + i + " (" + why + ")");
       }
     } catch (e) {
       if (e instanceof CollectionError) {
@@ -110,8 +126,8 @@ export async function collectFromDir(
   if (missingOutput.length > 0) {
     throw new CollectionError(
       "MISSING_SHARDS",
-      "shards reported success but did not produce " + expectedOutput + ": " + missingOutput.join(", "),
-      { missingOutput, expectedOutput },
+      "shards reported success but did not produce " + expectedName + ": " + missingOutput.join(", "),
+      { missingOutput, expectedOutput: expectedName },
     );
   }
   return results.sort((a, b) => a.shard - b.shard);

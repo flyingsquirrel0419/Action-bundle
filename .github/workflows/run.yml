@@ -291,7 +291,10 @@ jobs:
             echo "| Reducer | \`$SUMMARY_REDUCER\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload final result
-        if: ${{ inputs.reducer != 'none' }}
+        # A custom reduce_command owns the contract and produces
+        # final-result.json even when reducer is 'none'. Truthy-string form
+        # avoids null-vs-'' coercion on push triggers (inputs are empty).
+        if: ${{ inputs.reduce_command || inputs.reducer != 'none' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: final-result

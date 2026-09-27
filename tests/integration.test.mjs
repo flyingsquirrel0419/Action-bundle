@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile, spawn } from "node:child_process";
@@ -103,6 +103,49 @@ test("integration: collect rejects mixed-run artifacts", async () => {
   );
 });
 
+test("collector: typed expected output requires the right kind", async () => {
+  const dir = await tmpDir("ab-expout-");
+  const meta = {
+    version: 2, runId: "run-x", shard: 0, manifestDigest: "0".repeat(64),
+    status: "success", taskCount: 0, startedAt: "", finishedAt: "",
+    durationMs: 0, completedTaskIds: [], outputs: [],
+  };
+  await mkdir(join(dir, "shard-0"), { recursive: true });
+  await writeFile(join(dir, "shard-0", "result-meta.json"), JSON.stringify(meta));
+  const req = { type: "directory", name: "files" };
+  // A regular file named "files" must not satisfy a directory requirement.
+  await writeFile(join(dir, "shard-0", "files"), "not a dir");
+  await assert.rejects(
+    () => collectFromDir(dir, 1, req),
+    (e) => e.code === "MISSING_SHARDS" && /files is not a directory/.test(e.message),
+  );
+  // A real directory satisfies it.
+  await rm(join(dir, "shard-0", "files"));
+  await mkdir(join(dir, "shard-0", "files"));
+  const collected = await collectFromDir(dir, 1, req);
+  assert.equal(collected.length, 1);
+});
+
+test("CLI verify --expect-output files rejects a regular file with exit 3", async () => {
+  const dir = await tmpDir("ab-cliver-");
+  await mkdir(join(dir, "manifests"), { recursive: true });
+  const m = createManifest({ runId: "run-v", shardIndex: 0, shardCount: 1, tasks: [] });
+  await writeFile(join(dir, "manifests", "manifest-0.json"), JSON.stringify(m));
+  await mkdir(join(dir, "parts", "shard-0"), { recursive: true });
+  await writeFile(join(dir, "parts", "shard-0", "result-meta.json"), JSON.stringify({
+    version: 2, runId: "run-v", shard: 0, manifestDigest: manifestDigest(m),
+    status: "success", taskCount: 0, startedAt: "", finishedAt: "",
+    durationMs: 0, completedTaskIds: [], outputs: [],
+  }));
+  // "files" exists but is a regular file — verification must fail (exit 3).
+  await writeFile(join(dir, "parts", "shard-0", "files"), "not a dir");
+  await assert.rejects(
+    execFileAsync("node", [CLI, "verify", "--parts-dir", join(dir, "parts"), "--shard-count", "1",
+      "--manifests-dir", join(dir, "manifests"), "--expect-output", "files"]),
+    (e) => e.code === 3,
+  );
+});
+
 test("integration: collect rejects a result-meta declaring the wrong shard", async () => {
   const dir = await tmpDir("ab-bind-");
   await mkdir(join(dir, "shard-0"), { recursive: true });
@@ -133,6 +176,29 @@ test("integration: collect rejects malformed result-meta fields", async () => {
     await writeFile(join(dir, "shard-0", "result-meta.json"), JSON.stringify({ ...base, ...bad }));
     await assert.rejects(() => collectFromDir(dir, 1), (e) => e.code === "MALFORMED_RESULT" || e.code === "INCOMPATIBLE_VERSION" || e.code === "DUPLICATE_TASKS");
   }
+});
+
+test("reduce files: requires a real directory per shard", async () => {
+  // Missing files/ directory.
+  const missing = await tmpDir("ab-files-missing-");
+  await mkdir(join(missing, "shard-0"), { recursive: true });
+  await assert.rejects(
+    () => reduceResults({ partsDir: missing, shardCount: 1, strategy: "files", outPath: join(missing, "out.json") }),
+    (e) => e.code === "REDUCTION_ERROR" && /missing expected output files/.test(e.message),
+  );
+  // A regular file named "files" is not a directory.
+  const notdir = await tmpDir("ab-files-notdir-");
+  await mkdir(join(notdir, "shard-0"), { recursive: true });
+  await writeFile(join(notdir, "shard-0", "files"), "not a dir");
+  await assert.rejects(
+    () => reduceResults({ partsDir: notdir, shardCount: 1, strategy: "files", outPath: join(notdir, "out.json") }),
+    (e) => e.code === "REDUCTION_ERROR" && /is not a directory/.test(e.message),
+  );
+  // An existing empty directory is valid and yields an empty listing.
+  const empty = await tmpDir("ab-files-empty-");
+  await mkdir(join(empty, "shard-0", "files"), { recursive: true });
+  const res = await reduceResults({ partsDir: empty, shardCount: 1, strategy: "files", outPath: join(empty, "out.json") });
+  assert.deepEqual(JSON.parse(await readFile(res.outPath, "utf8")), { "shard-0": [] });
 });
 
 test("reduce json-object: duplicate keys across shards rejected", async () => {

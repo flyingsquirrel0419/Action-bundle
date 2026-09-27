@@ -7,7 +7,7 @@ Reduction turns verified shard outputs into one artifact.
 | `concat` | `shard-N/output.txt` | All files concatenated, in shard order |
 | `json-array` | `shard-N/output.json` (array or value) | One merged JSON array |
 | `json-object` | `shard-N/output.json` (object) | Shallow-merged JSON object |
-| `files` | `shard-N/files/*` | JSON manifest of file listings |
+| `files` | `shard-N/files/` (must be a directory; may be empty) | JSON manifest of file listings |
 | `none` | — | Skip reduction |
 | custom command | anything | Whatever your command writes |
 

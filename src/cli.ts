@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { createPlan } from "./planner.js";
 import { createManifest, parseManifest } from "./manifest.js";
 import { runWorker } from "./worker.js";
-import { collectFromDir } from "./collector.js";
+import { collectFromDir, type ExpectedOutput } from "./collector.js";
 import { verifyShards } from "./verify.js";
 import { reduceResults, type BuiltinReducer } from "./reduce.js";
-import { expectedOutputFor } from "./reducer-contract.js";
+import { expectedOutputFor, REDUCER_REQUIREMENTS } from "./reducer-contract.js";
 import { ActionBundleError } from "./errors.js";
 import { ConfigurationError } from "./errors.js";
 import type { Workload } from "./task.js";
@@ -103,6 +103,19 @@ function killGraceMsOverride(): number | undefined {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
+/**
+ * Map --expect-output <name> to the typed requirement from
+ * REDUCER_REQUIREMENTS (files -> directory, output.* -> file). Unknown names
+ * keep the legacy existence-only semantics.
+ */
+function expectedOutputRequirement(name: string | undefined): ExpectedOutput | undefined {
+  if (name === undefined) return undefined;
+  for (const req of Object.values(REDUCER_REQUIREMENTS)) {
+    if (req !== null && req.name === name) return req;
+  }
+  return name;
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd || cmd === "--help" || cmd === "-h") usage();
@@ -160,7 +173,7 @@ async function main(): Promise<void> {
     const collected = await collectFromDir(
       flags["parts-dir"] ?? "",
       shardCount,
-      flags["expect-output"],
+      expectedOutputRequirement(flags["expect-output"]),
     );
     const report = verifyShards({ manifests, collected, shardCount });
     console.log("[action-bundle] expected shards: " + shardCount);

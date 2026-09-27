@@ -82,7 +82,9 @@ reference your scripts relative to your own repository root.
 
 The reducer strategy does not match what your worker writes. `json-array` and
 `json-object` expect `output.json`; `concat` expects `output.txt`;
-`files` expects `files/`. Either write the expected file or use a custom
+`files` expects a `files/` **directory** (a regular file named `files` is
+rejected by both `verify --expect-output files` and the reducer; an empty
+directory is fine). Either write the expected output or use a custom
 `--command` reducer.
 </details>
 

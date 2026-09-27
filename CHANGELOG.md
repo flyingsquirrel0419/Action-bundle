@@ -32,7 +32,7 @@ Nothing is released yet — everything below is unreleased.
   `ReduceOptions.cwd`); must exist and be a directory
 - `manifestDigest` and `canonicalize` exported from the package root
 - Reusable workflow inputs `command` and `reduce_command`
-- 53 unit + integration tests covering partition invariants (union = input,
+- 56 unit + integration tests covering partition invariants (union = input,
   disjoint shards, determinism), every verification failure mode, worker
   failure metadata and timeouts, process-group termination, reducer cwd/env,
   and workload/flag validation
@@ -84,6 +84,14 @@ Nothing is released yet — everything below is unreleased.
 - A custom reducer's output path is cleared before the command runs, so a
   result file left over from an earlier run can no longer satisfy the
   "exited 0 but did not create" postcondition.
+- `files` reducer requires a real directory: `verify --expect-output files`
+  rejects a regular file named `files`, and the reducer fails with
+  `REDUCTION_ERROR` when `files/` is missing or not a directory instead of
+  silently listing it as empty. `expect-output` checks are now typed from
+  `REDUCER_REQUIREMENTS` (`output.*` must be files, `files` a directory), and
+  the `missingOutput` error detail lists `"shard-N (reason)"` strings.
+- Reusable workflow uploads `final-result` whenever `reduce_command` is set,
+  even with `reducer: "none"` (the upload was previously skipped).
 
 ### Changed
 

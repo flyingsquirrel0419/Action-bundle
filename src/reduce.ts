@@ -128,8 +128,15 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
         const dir = join(partsDir, "shard-" + i, "files");
         try {
           listing["shard-" + i] = await readdir(dir);
-        } catch {
-          listing["shard-" + i] = [];
+        } catch (e) {
+          const code = (e as NodeJS.ErrnoException).code;
+          if (code === "ENOENT") {
+            throw new ReductionError("shard " + i + " missing expected output files", { shard: i, name: "files" });
+          }
+          if (code === "ENOTDIR") {
+            throw new ReductionError("shard " + i + " output files is not a directory", { shard: i, name: "files" });
+          }
+          throw e;
         }
       }
       await writeFile(opts.outPath, JSON.stringify(listing, null, 2));
