@@ -41,7 +41,7 @@ function usage(): never {
       "Commands:",
       "  plan     <workload.json> --shards 8 [--max-shards 32] [--min-tasks-per-shard 1]",
       "  worker   --manifest manifest.json [--command \"sh ...\"] --out-dir dir",
-      "  verify   --parts-dir dir --shard-count 8 --manifests-dir dir",
+      "  verify   --parts-dir dir --shard-count 8 --manifests-dir dir [--expect-output output.json]",
       "  reduce   --parts-dir dir --shard-count 8 [--strategy concat|json-array|json-object|files|none] [--command \"sh ...\"] --out result",
       "",
       "Workload file: {\"kind\":\"index\",\"count\":1000} | {\"kind\":\"list\",\"items\":[...]} | {\"kind\":\"tasks\",\"tasks\":[{\"id\":...}]}",
@@ -116,7 +116,11 @@ async function main(): Promise<void> {
     for (let i = 0; i < shardCount; i++) {
       manifests.push(parseManifest(await readJson(join(manifestsDir, "manifest-" + i + ".json"))));
     }
-    const collected = await collectFromDir(flags["parts-dir"] ?? "", shardCount);
+    const collected = await collectFromDir(
+      flags["parts-dir"] ?? "",
+      shardCount,
+      flags["expect-output"],
+    );
     const report = verifyShards({ manifests, collected, shardCount });
     console.log("[action-bundle] expected shards: " + shardCount);
     console.log("[action-bundle] received shards: " + collected.length);

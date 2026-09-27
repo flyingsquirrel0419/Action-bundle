@@ -133,7 +133,8 @@ jobs:
           node dist/cli.js verify \
             --parts-dir parts/ \
             --shard-count ${{ needs.setup.outputs.shard_count }} \
-            --manifests-dir manifests/
+            --manifests-dir manifests/ \
+            --expect-output output.json
       - name: Reduce results
         env:
           REDUCER: ${{ inputs.reducer || 'json-array' }}
@@ -144,6 +145,8 @@ jobs:
             --strategy "$REDUCER" \
             --out final-result.json
       - name: Write summary
+        env:
+          SUMMARY_REDUCER: ${{ inputs.reducer || 'json-array' }}
         run: |
           {
             echo "## Action-bundle run"
@@ -152,7 +155,7 @@ jobs:
             echo "|---|---|"
             echo "| Run ID | \`${{ needs.setup.outputs.run_id }}\` |"
             echo "| Shards | \`${{ needs.setup.outputs.shard_count }}\` |"
-            echo "| Reducer | \`${{ inputs.reducer || 'json-array' }}\` |"
+            echo "| Reducer | \`$SUMMARY_REDUCER\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload final result
         uses: actions/upload-artifact@v4

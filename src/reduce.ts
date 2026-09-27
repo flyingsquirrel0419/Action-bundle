@@ -1,5 +1,5 @@
 import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ReductionError } from "./errors.js";
@@ -17,7 +17,11 @@ export interface ReduceOptions {
   /** Custom merge command; receives ACTION_BUNDLE_RESULTS and ACTION_BUNDLE_OUTPUT. */
   command?: string;
   outPath: string;
+  /** Max milliseconds a custom command may run. Default 30 min. */
+  timeoutMs?: number;
 }
+
+const DEFAULT_REDUCE_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Reduce collected shard outputs into one final artifact.
@@ -26,7 +30,14 @@ export interface ReduceOptions {
 export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: string; strategy: string }> {
   const { partsDir, shardCount } = opts;
   const strategy: BuiltinReducer | "custom" = opts.command ? "custom" : (opts.strategy ?? "concat");
-  await mkdir(join(opts.outPath, ".."), { recursive: true }).catch(() => {});
+  await mkdir(dirname(opts.outPath), { recursive: true }).catch(() => {});
+
+  const KNOWN: ReadonlySet<string> = new Set(["concat", "json-array", "json-object", "files", "none", "custom"]);
+  if (!KNOWN.has(strategy)) {
+    throw new ReductionError("unknown reduce strategy: " + String(strategy), {
+      allowed: [...KNOWN].filter((s) => s !== "custom"),
+    });
+  }
 
   switch (strategy) {
     case "concat": {
@@ -49,14 +60,30 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
       return { outPath: opts.outPath, strategy };
     }
     case "json-object": {
-      let merged: Record<string, unknown> = {};
+      const merged: Record<string, unknown> = Object.create(null);
+      const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
       for (let i = 0; i < shardCount; i++) {
         const raw = await readShardOutput(partsDir, i, "output.json");
         const parsed = JSON.parse(raw);
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
           throw new ReductionError("shard " + i + " output.json is not an object");
         }
-        merged = { ...merged, ...(parsed as Record<string, unknown>) };
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          if (FORBIDDEN.has(key)) {
+            throw new ReductionError(
+              "shard " + i + " output.json contains forbidden key: " + key,
+              { shard: i, key },
+            );
+          }
+          if (Object.prototype.hasOwnProperty.call(merged, key)) {
+            throw new ReductionError(
+              "duplicate key across shards: " + JSON.stringify(key) +
+                " (shard " + i + "); use an explicit overwrite policy or rename keys",
+              { shard: i, key },
+            );
+          }
+          merged[key] = value;
+        }
       }
       await writeFile(opts.outPath, JSON.stringify(merged, null, 2));
       return { outPath: opts.outPath, strategy };
@@ -89,6 +116,8 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
         const { stdout, stderr } = await execFileAsync("sh", ["-c", opts.command ?? ""], {
           env,
           maxBuffer: 64 * 1024 * 1024,
+          timeout: opts.timeoutMs ?? DEFAULT_REDUCE_TIMEOUT_MS,
+          killSignal: "SIGTERM",
         });
         if (stdout) process.stdout.write(stdout);
         if (stderr) process.stderr.write(stderr);
@@ -112,4 +141,3 @@ async function readShardOutput(partsDir: string, shard: number, name: string): P
     });
   }
 }
-

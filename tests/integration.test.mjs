@@ -71,3 +71,69 @@ test("CLI plan end-to-end", async () => {
   assert.match(stdout, /execution plan/);
   assert.match(stdout, /shards       4/);
 });
+
+test("workloadToTasks: rejects oversized index workload", async () => {
+  const { workloadToTasks, MAX_TASKS } = await import("../dist/task.js");
+  assert.throws(() => workloadToTasks({ kind: "index", count: MAX_TASKS + 1 }), /ceiling|0\./);
+  assert.throws(() => workloadToTasks({ kind: "index", count: -1 }), /integer/);
+  assert.throws(() => workloadToTasks({ kind: "index", count: Infinity }), /integer/);
+});
+
+test("collector: meta.shard must match artifact directory", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ab-bind-"));
+  for (const i of [0, 1]) await mkdir(join(dir, "shard-" + i), { recursive: true });
+  // shard-0 dir claims to be shard 1
+  await writeFile(join(dir, "shard-0", "result-meta.json"), JSON.stringify({
+    version: 1, shard: 1, status: "success", taskCount: 0,
+    startedAt: "", finishedAt: "", durationMs: 0, completedTaskIds: [], outputs: [],
+  }));
+  await writeFile(join(dir, "shard-1", "result-meta.json"), JSON.stringify({
+    version: 1, shard: 1, status: "success", taskCount: 0,
+    startedAt: "", finishedAt: "", durationMs: 0, completedTaskIds: [], outputs: [],
+  }));
+  await assert.rejects(() => collectFromDir(dir, 2), (e) => e.code === "MALFORMED_RESULT" || e.code === "MISSING_SHARDS");
+});
+
+test("collector: success claim without output file is rejected", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ab-noout-"));
+  await mkdir(join(dir, "shard-0"), { recursive: true });
+  await writeFile(join(dir, "shard-0", "result-meta.json"), JSON.stringify({
+    version: 1, shard: 0, status: "success", taskCount: 1,
+    startedAt: "", finishedAt: "", durationMs: 0, completedTaskIds: ["t0"], outputs: [],
+  }));
+  // shard-0 wrote result-meta.json but no output.json
+  await assert.rejects(
+    () => collectFromDir(dir, 1, "output.json"),
+    (e) => e.code === "MISSING_SHARDS",
+  );
+});
+
+test("reduce json-object: duplicate keys across shards rejected", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ab-dupk-"));
+  for (const i of [0, 1]) {
+    await mkdir(join(dir, "shard-" + i), { recursive: true });
+    await writeFile(join(dir, "shard-" + i, "output.json"), JSON.stringify({ shared: i }));
+  }
+  await assert.rejects(
+    () => reduceResults({ partsDir: dir, shardCount: 2, strategy: "json-object", outPath: join(dir, "out.json") }),
+    (e) => e.code === "REDUCTION_ERROR" && /duplicate key/.test(e.message),
+  );
+});
+
+test("reduce json-object: forbidden keys rejected", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ab-proto-"));
+  await mkdir(join(dir, "shard-0"), { recursive: true });
+  await writeFile(join(dir, "shard-0", "output.json"), '{"__proto__": {"x": 1}}');
+  await assert.rejects(
+    () => reduceResults({ partsDir: dir, shardCount: 1, strategy: "json-object", outPath: join(dir, "out.json") }),
+    (e) => e.code === "REDUCTION_ERROR" && /forbidden key/.test(e.message),
+  );
+});
+
+test("reduce: unknown strategy rejected explicitly", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ab-unk-"));
+  await assert.rejects(
+    () => reduceResults({ partsDir: dir, shardCount: 1, strategy: "bogus", outPath: join(dir, "out.json") }),
+    (e) => e.code === "REDUCTION_ERROR" && /unknown reduce strategy/.test(e.message),
+  );
+});

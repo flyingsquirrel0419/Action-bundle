@@ -33,10 +33,14 @@ Security boundaries this project handles:
 - The reusable workflow requests `contents: read` only. If a calling
   repository needs more, it must raise its own `permissions:` explicitly.
 - Downloaded artifacts are treated as untrusted input: the collector and
-  verifier validate manifest version, shard ids, task-id coverage, and
-  result structure before reduction.
+  verifier validate manifest version, shard ids (bound to the artifact
+  directory), task-id coverage, result structure, and — when the workflow
+  sets `--expect-output` — that a shard claiming success actually produced
+  its expected output file before reduction.
+- Verification proves *completeness and consistency*, not correctness of
+  compute. A shard that faithfully reports its assigned task ids but lies
+  about doing the work is out of scope (no Byzantine fault tolerance).
 - Worker commands are arbitrary code by design. Do not run the workflow
   with write permissions or secrets on untrusted (fork) pull requests.
 
 See [docs/security.md](docs/security.md) for the full threat model.
-

@@ -38,7 +38,11 @@ export interface WorkerRunOptions {
   outDir: string;
   /** Extra env for the child process. */
   env?: Record<string, string>;
+  /** Max milliseconds the command may run before SIGTERM. Default 30 min. */
+  timeoutMs?: number;
 }
+
+const DEFAULT_WORKER_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Execute one shard: write manifest.json, expose ACTION_BUNDLE_* env vars,
@@ -74,6 +78,8 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
         env,
         cwd: process.cwd(),
         maxBuffer: 64 * 1024 * 1024,
+        timeout: opts.timeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
+        killSignal: "SIGTERM",
       });
       if (stdout) process.stdout.write(stdout);
       if (stderr) process.stderr.write(stderr);
@@ -123,4 +129,3 @@ export class WorkerError extends ActionBundleError {
     this.name = "WorkerError";
   }
 }
-
