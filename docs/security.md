@@ -21,7 +21,11 @@ parts/      downloaded shard artifacts. Untrusted data, validated before reduce.
 manifests/  the execution plan from the trusted setup job.
 ```
 
-Caller code can never replace or impersonate the runtime.
+Caller code can never replace or impersonate the runtime. Every job starts
+with an "Assert runtime identity" step that fails the job unless
+`job.workflow_repository` is set and `job.workflow_sha` is a full 40-character
+SHA — otherwise `actions/checkout` would silently fall back to the caller's
+repository and ref.
 
 ## Artifact trust boundary
 
@@ -40,6 +44,12 @@ consistency — not correctness of arbitrary computation (no Byzantine fault
 tolerance). A shard whose command fails still uploads its
 `result-meta.json` (status `failed`), the aggregate job runs, and
 verification fails with `FAILED_SHARD`.
+
+Worker and custom reducer commands run with inherited stdio (logs stream
+live, no output-size limit) and a 30-minute default timeout. On timeout, or
+when the runtime itself receives SIGINT/SIGTERM, the command's whole process
+group is sent SIGTERM, then SIGKILL after a short grace period — background
+processes started by the command do not outlive it.
 
 ## Untrusted PRs
 

@@ -44,6 +44,15 @@ export function verifyShards(opts: {
       { runIds: [...runIds], versions: [...versions], shardCounts: [...shardCounts] },
     );
   }
+  // The manifests' declared shardCount must match the caller's shardCount;
+  // otherwise a subset of manifests from a larger plan verifies as complete.
+  if (manifests[0].shardCount !== shardCount) {
+    throw new VerificationError(
+      "UNEXPECTED_SHARD_COUNT",
+      "manifests declare shardCount " + manifests[0].shardCount + ", expected " + shardCount,
+      { expected: shardCount, got: manifests[0].shardCount },
+    );
+  }
   const manifestByShard = new Map<number, ShardManifest>();
   for (const m of manifests) {
     if (manifestByShard.has(m.shardIndex)) {

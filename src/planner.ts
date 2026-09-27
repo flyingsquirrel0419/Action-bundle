@@ -28,12 +28,18 @@ export interface Plan {
 export function createPlan(opts: PlanOptions): Plan {
   const tasks = workloadToTasks(opts.workload);
   const maxShards = opts.maxShards ?? 32;
-  if (maxShards < 1) throw new PlanningError("maxShards must be >= 1");
+  if (!Number.isInteger(maxShards) || maxShards < 1) {
+    throw new PlanningError("maxShards must be a positive integer", { maxShards: opts.maxShards });
+  }
 
   let shardCount: number;
   if (opts.shards === "auto") {
     const minPer = opts.minTasksPerShard ?? 1;
-    if (minPer < 1) throw new PlanningError("minTasksPerShard must be >= 1");
+    if (!Number.isInteger(minPer) || minPer < 1) {
+      throw new PlanningError("minTasksPerShard must be a positive integer", {
+        minTasksPerShard: opts.minTasksPerShard,
+      });
+    }
     if (tasks.length === 0) {
       shardCount = 1;
     } else {

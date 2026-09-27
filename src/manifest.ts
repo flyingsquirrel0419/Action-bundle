@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Task } from "./task.js";
+import { MAX_TASK_ID_LENGTH, type Task } from "./task.js";
 import { ActionBundleError, ManifestError } from "./errors.js";
 
 export const MANIFEST_VERSION = 2;
@@ -94,8 +94,8 @@ export function parseManifest(raw: unknown): ShardManifest {
       throw new ManifestError("every manifest task must be an object");
     }
     const id = (t as { id?: unknown }).id;
-    if (typeof id !== "string" || id.length === 0 || id.length > 4096) {
-      throw new ManifestError("every manifest task needs a string id (1..4096 chars)");
+    if (typeof id !== "string" || id.length === 0 || id.length > MAX_TASK_ID_LENGTH) {
+      throw new ManifestError("every manifest task needs a string id (1.." + MAX_TASK_ID_LENGTH + " chars)");
     }
     if (seen.has(id)) {
       throw new ManifestError("duplicate task id in manifest: " + id);
@@ -114,7 +114,9 @@ export function runIdFor(tasks: Task[], shardCount: number): string {
   h.update(String(MANIFEST_VERSION));
   h.update("\0" + String(shardCount));
   for (const t of tasks) {
-    h.update("\0" + t.id);
+    // JSON-encode ids: JSON escapes U+0000, so a raw "\0in:" separator can
+    // never appear inside a token and collide with a different id+input pair.
+    h.update("\0" + JSON.stringify(t.id));
     if (t.input !== undefined) h.update("\0in:" + canonicalize(t.input));
   }
   return "run-" + h.digest("hex").slice(0, 16);

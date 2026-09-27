@@ -26,12 +26,16 @@ variables before running it:
    {"completedTaskIds": ["task-a", "task-b"]}
    ```
 
-5. Exit 0 on success, non-zero on failure.
+5. Exit 0 on success, non-zero on failure. Output goes straight to the job
+   log as it is written. The command is stopped after 30 minutes by
+   default (`timeoutMs` in the library); the whole process group is
+   terminated.
 
 ## Completion report semantics
 
 | Situation | Result |
 |---|---|
+| Stale file from an earlier run in the same output dir | Deleted before the command starts — never counted |
 | No completions file | Nothing is considered complete (verification fails with `MISSING_TASKS`) |
 | Malformed file (not an array of unique strings) | Shard is marked `failed`, verification fails with `FAILED_SHARD` |
 | Partial list | Only the reported ids count as complete |
@@ -43,12 +47,15 @@ arbitrary computation was correct, and does not claim to.
 
 Action-bundle writes `result-meta.json` (status, timings, completed task ids)
 next to your outputs — that file is what the collector and verifier consume.
+All `ACTION_BUNDLE_*` paths are absolute, because the command may run in a
+different working directory (`--cwd`, e.g. the caller workspace).
 
 ## Local dry-run
 
 ```bash
 export ACTION_BUNDLE_MANIFEST=manifest-0.json
 export ACTION_BUNDLE_OUTPUT_DIR=/tmp/shard-0
+export ACTION_BUNDLE_COMPLETIONS=/tmp/shard-0/completions.json
 export ACTION_BUNDLE_SHARD_INDEX=0 ACTION_BUNDLE_SHARD_COUNT=4
 python3 examples/python/worker.py
 ```

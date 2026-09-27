@@ -63,6 +63,28 @@ test("workloadToTasks: rejects oversized/invalid index workload", () => {
   assert.throws(() => workloadToTasks({ kind: "index", count: 1.5 }));
 });
 
+const isPlanningError = (e) => e.name === "PlanningError" && e.code === "PLANNING_ERROR";
+
+test("workloadToTasks: list validation failures are PlanningError", () => {
+  assert.throws(() => workloadToTasks({ kind: "list", items: [""] }), isPlanningError);
+  assert.throws(() => workloadToTasks({ kind: "list", items: [1] }), isPlanningError);
+  assert.throws(() => workloadToTasks({ kind: "list", items: ["x".repeat(4097)] }), isPlanningError);
+  assert.throws(() => workloadToTasks({ kind: "list", items: "nope" }), isPlanningError);
+});
+
+test("workloadToTasks: tasks validation failures are PlanningError", () => {
+  assert.throws(() => workloadToTasks({ kind: "tasks", tasks: [{ id: "" }] }), isPlanningError);
+  assert.throws(() => workloadToTasks({ kind: "tasks", tasks: [{ id: 42 }] }), isPlanningError);
+  assert.throws(() => workloadToTasks({ kind: "tasks", tasks: [null] }), isPlanningError);
+  assert.throws(() => workloadToTasks({ kind: "tasks", tasks: "nope" }), isPlanningError);
+});
+
+test("workloadToTasks: unknown kind and non-object workload are PlanningError", () => {
+  assert.throws(() => workloadToTasks({ kind: "bogus" }), isPlanningError);
+  assert.throws(() => workloadToTasks(null), isPlanningError);
+  assert.throws(() => workloadToTasks("index"), isPlanningError);
+});
+
 // --- canonicalization + runId ---
 
 test("canonicalize: key order independent", () => {
@@ -81,6 +103,12 @@ test("runId: stable for identical workloads", () => {
   assert.equal(a, b);
 });
 
+test("runId: NUL-separator injection cannot collide with an id+input pair", () => {
+  const injected = runIdFor([{ id: 'a\0in:"x"' }], 4);
+  const plain = runIdFor([{ id: "a", input: "x" }], 4);
+  assert.notEqual(injected, plain);
+});
+
 // --- planner ---
 
 test("planner: explicit shards", () => {
@@ -93,6 +121,29 @@ test("planner: shards above maxShards rejected", () => {
   assert.throws(
     () => createPlan({ workload: { kind: "index", count: 10 }, shards: 64, maxShards: 32 }),
     /exceeds maxShards/,
+  );
+});
+
+test("planner: non-integer/NaN plan options rejected as PlanningError", () => {
+  assert.throws(
+    () => createPlan({ workload: { kind: "index", count: 10 }, shards: 2, maxShards: NaN }),
+    isPlanningError,
+  );
+  assert.throws(
+    () => createPlan({ workload: { kind: "index", count: 10 }, shards: "auto", maxShards: NaN }),
+    isPlanningError,
+  );
+  assert.throws(
+    () => createPlan({ workload: { kind: "index", count: 10 }, shards: 2, maxShards: 1.5 }),
+    isPlanningError,
+  );
+  assert.throws(
+    () => createPlan({ workload: { kind: "index", count: 10 }, shards: "auto", minTasksPerShard: 0 }),
+    isPlanningError,
+  );
+  assert.throws(
+    () => createPlan({ workload: { kind: "index", count: 10 }, shards: "auto", minTasksPerShard: NaN }),
+    isPlanningError,
   );
 });
 
@@ -151,6 +202,21 @@ function resultFor(manifest, completedTaskIds, over = {}) {
     },
   };
 }
+
+test("verify: rejects manifests whose shardCount disagrees with the argument", () => {
+  // A 4-shard plan's first two manifests must not verify as a complete 2-shard run.
+  const plan = createPlan({ workload: { kind: "index", count: 8 }, shards: 4 });
+  const manifests = plan.shards.map((s) =>
+    createManifest({ runId: plan.runId, shardIndex: s.shardIndex, shardCount: plan.shardCount, tasks: s.tasks }),
+  );
+  const collected = manifests
+    .slice(0, 2)
+    .map((m) => resultFor(m, m.tasks.map((t) => t.id)));
+  assert.throws(
+    () => verifyShards({ manifests: manifests.slice(0, 2), collected, shardCount: 2 }),
+    (e) => e.code === "UNEXPECTED_SHARD_COUNT",
+  );
+});
 
 test("verify: ok when per-shard assignment and coverage are exact", () => {
   const m0 = manifestFor(0, 2, ["a", "b"]);

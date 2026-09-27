@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createPlan } from "../dist/planner.js";
 import { createManifest, manifestDigest } from "../dist/manifest.js";
@@ -11,6 +11,7 @@ import { runWorker } from "../dist/worker.js";
 import { collectFromDir } from "../dist/collector.js";
 import { verifyShards } from "../dist/verify.js";
 import { reduceResults } from "../dist/reduce.js";
+import { runShell } from "../dist/exec.js";
 
 const execFileAsync = promisify(execFile);
 const CLI = new URL("../dist/cli.js", import.meta.url).pathname;
@@ -173,6 +174,18 @@ test("CLI plan end-to-end", async () => {
   assert.match(stdout, /shards       4/);
 });
 
+test("CLI plan rejects non-integer numeric flags with exit 2", async () => {
+  const dir = await tmpDir("ab-clibad-");
+  const wf = join(dir, "workload.json");
+  await writeFile(wf, JSON.stringify({ kind: "index", count: 100 }));
+  for (const flag of ["--max-shards", "--min-tasks-per-shard", "--shards"]) {
+    await assert.rejects(
+      execFileAsync("node", [CLI, "plan", wf, flag, "abc"]),
+      (e) => e.code === 2,
+    );
+  }
+});
+
 test("reduce: oversized shard output rejected before reading", async () => {
   const dir = await tmpDir("ab-big-");
   await mkdir(join(dir, "shard-0"), { recursive: true });
@@ -194,6 +207,137 @@ test("reduce: custom command exiting 0 without creating output is rejected", asy
     }),
     (e) => e.code === "REDUCTION_ERROR" && /did not create/.test(e.message),
   );
+});
+
+test("worker: stale completions.json from a previous run is not evidence", async () => {
+  const dir = await tmpDir("ab-stale-");
+  const m = createManifest({ runId: "run-s", shardIndex: 0, shardCount: 1, tasks: [{ id: "a" }, { id: "b" }] });
+  const outDir = join(dir, "shard-0");
+  const first = await runWorker({ manifest: m, outDir, command: GOOD_WORKER });
+  assert.equal(first.completedTaskIds.length, 2, "first run reports all tasks");
+  // Rerun the same manifest into the same outDir with a no-op command:
+  // the stale completions file must be cleared, not trusted.
+  const second = await runWorker({ manifest: m, outDir, command: "true" });
+  assert.equal(second.completedTaskIds.length, 0, "stale completions must not count");
+  assert.equal(second.status, "success");
+});
+
+test("worker: command exceeding timeoutMs is marked failed with a timeout message", async () => {
+  const dir = await tmpDir("ab-wtime-");
+  const m = createManifest({ runId: "run-t", shardIndex: 0, shardCount: 1, tasks: [{ id: "a" }] });
+  const outDir = join(dir, "shard-0");
+  const started = Date.now();
+  await assert.rejects(
+    () => runWorker({ manifest: m, outDir, command: "sleep 5", timeoutMs: 200 }),
+    (e) => e.code === "WORKER_ERROR" && /timed out/.test(e.details?.error ?? ""),
+  );
+  assert.ok(Date.now() - started < 4000, "timeout fires well before the command finishes");
+  const meta = JSON.parse(await readFile(join(outDir, "result-meta.json"), "utf8"));
+  assert.equal(meta.status, "failed");
+  assert.match(meta.error, /timed out/);
+});
+
+test("worker: timeout kills the whole process group, no orphans survive", async () => {
+  const dir = await tmpDir("ab-wgroup-");
+  const pidFile = join(dir, "pids");
+  const m = createManifest({ runId: "run-g", shardIndex: 0, shardCount: 1, tasks: [{ id: "a" }] });
+  // sh records its own pid and a background child's pid, then waits on it.
+  // A timeout must terminate both — killing only sh would orphan the sleep.
+  const command = "echo $$ > " + pidFile + "; sleep 30 & echo $! >> " + pidFile + "; wait";
+  await assert.rejects(
+    () => runWorker({ manifest: m, outDir: join(dir, "shard-0"), command, timeoutMs: 200 }),
+    (e) => e.code === "WORKER_ERROR" && /timed out/.test(e.details?.error ?? ""),
+  );
+  // Allow signal delivery to settle.
+  await new Promise((r) => setTimeout(r, 200));
+  const pids = (await readFile(pidFile, "utf8")).trim().split("\n").map(Number);
+  assert.equal(pids.length, 2, "command recorded sh pid and background pid");
+  for (const pid of pids) {
+    assert.throws(() => process.kill(pid, 0), (e) => e.code === "ESRCH");
+  }
+});
+
+test("exec: SIGTERM-ignoring group members are escalated to SIGKILL", async () => {
+  const dir = await tmpDir("ab-wsigkill-");
+  const pidFile = join(dir, "pids");
+  // Both sh and its background child ignore SIGTERM. sh still exits when its
+  // last child dies, but with `wait` blocked the SIGKILL grace timer is the
+  // only thing that can reap them.
+  const command =
+    'trap "" TERM; echo $$ > ' + pidFile +
+    '; (trap "" TERM; sleep 30) & echo $! >> ' + pidFile + "; wait";
+  const started = Date.now();
+  await assert.rejects(
+    () => runShell(command, { timeoutMs: 200, killGraceMs: 300 }),
+    (e) => /timed out/.test(e.message),
+  );
+  assert.ok(Date.now() - started < 2000, "caller is not delayed by the grace period");
+  const pids = (await readFile(pidFile, "utf8")).trim().split("\n").map(Number);
+  assert.equal(pids.length, 2, "command recorded sh pid and background pid");
+  // Poll for SIGKILL delivery: both pids must be gone within ~1.5s.
+  const deadline = Date.now() + 1500;
+  for (;;) {
+    const alive = pids.filter((pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (e) {
+        return e.code !== "ESRCH";
+      }
+    });
+    if (alive.length === 0) break;
+    assert.ok(Date.now() < deadline, "pids still alive after grace: " + alive.join(","));
+    await new Promise((r) => setTimeout(r, 100));
+  }
+});
+
+test("CLI worker: SIGTERM to the CLI still escalates SIGKILL to the group", async () => {
+  const dir = await tmpDir("ab-cliterm-");
+  const pidFile = join(dir, "pids");
+  const m = createManifest({ runId: "run-ct", shardIndex: 0, shardCount: 1, tasks: [{ id: "a" }] });
+  const manifestPath = join(dir, "m.json");
+  await writeFile(manifestPath, JSON.stringify(m));
+  // sh and its background child both ignore SIGTERM; only the armed SIGKILL
+  // escalation can reap them. The CLI must not process.exit() before it fires.
+  const command =
+    'trap "" TERM; echo $$ > ' + pidFile +
+    '; (trap "" TERM; sleep 30) & echo $! >> ' + pidFile + "; wait";
+  const child = spawn("node", [CLI, "worker", "--manifest", manifestPath, "--out-dir", join(dir, "out"), "--command", command], {
+    env: { ...process.env, ACTION_BUNDLE_KILL_GRACE_MS: "300" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  // Wait for the command to record both pids before signalling the CLI.
+  const deadline = Date.now() + 10000;
+  let pids = [];
+  for (;;) {
+    try {
+      pids = (await readFile(pidFile, "utf8")).trim().split("\n").map(Number).filter((n) => Number.isInteger(n));
+    } catch {
+      pids = [];
+    }
+    if (pids.length >= 2) break;
+    assert.ok(Date.now() < deadline, "worker command did not record its pids");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  child.kill("SIGTERM");
+  const exitCode = await new Promise((resolve) => child.on("close", (code) => resolve(code)));
+  assert.equal(exitCode, 4, "CLI exits 4 after forwarded SIGTERM fails the worker");
+  // The TERM-ignoring group members must be reaped by the SIGKILL escalation
+  // (~300ms grace) before/shortly after the CLI exits — not orphaned.
+  const reapDeadline = Date.now() + 5000;
+  for (;;) {
+    const alive = pids.filter((pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (e) {
+        return e.code !== "ESRCH";
+      }
+    });
+    if (alive.length === 0) break;
+    assert.ok(Date.now() < reapDeadline, "pids still alive after escalation: " + alive.join(","));
+    await new Promise((r) => setTimeout(r, 100));
+  }
 });
 
 test("worker: failed command writes failed metadata AND throws", async () => {

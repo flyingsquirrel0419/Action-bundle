@@ -1,13 +1,11 @@
-import { mkdir, writeFile, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import type { ShardManifest } from "./manifest.js";
 import { manifestDigest } from "./manifest.js";
 import { ActionBundleError } from "./errors.js";
-
-const execFileAsync = promisify(execFile);
+import { runShell } from "./exec.js";
 
 export type ShardResultStatus = "success" | "failed";
 
@@ -47,6 +45,8 @@ export interface WorkerRunOptions {
   outDir: string;
   env?: Record<string, string>;
   timeoutMs?: number;
+  /** Grace between SIGTERM and SIGKILL when terminating the worker. Default 5s. */
+  killGraceMs?: number;
   /**
    * Working directory for the worker command. When set, the command runs
    * there (e.g. the caller workspace), not in the process cwd. Must exist.
@@ -74,11 +74,12 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
 
   // Absolute paths: the worker command may run in a different cwd
   // (e.g. the caller workspace), so env vars must not be relative.
-  const { resolve } = await import("node:path");
   const manifestPath = resolve(outDir, "manifest.json");
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
   const completionsPath = resolve(outDir, "completions.json");
   const absOutDir = resolve(outDir);
+  // A stale completions.json from a previous run is not evidence for this one.
+  await rm(completionsPath, { force: true });
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -99,7 +100,6 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
   if (opts.command) {
     const cwd = opts.cwd ?? process.cwd();
     if (opts.cwd !== undefined) {
-      const { statSync, realpathSync } = await import("node:fs");
       let st;
       try {
         st = statSync(cwd);
@@ -111,15 +111,12 @@ export async function runWorker(opts: WorkerRunOptions): Promise<ShardResultMeta
       }
     }
     try {
-      const { stdout, stderr } = await execFileAsync("sh", ["-c", opts.command], {
+      await runShell(opts.command, {
         env,
         cwd,
-        maxBuffer: 64 * 1024 * 1024,
-        timeout: opts.timeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
-        killSignal: "SIGTERM",
+        timeoutMs: opts.timeoutMs ?? DEFAULT_WORKER_TIMEOUT_MS,
+        killGraceMs: opts.killGraceMs,
       });
-      if (stdout) process.stdout.write(stdout);
-      if (stderr) process.stderr.write(stderr);
     } catch (e) {
       status = "failed";
       error = e instanceof Error ? e.message : String(e);

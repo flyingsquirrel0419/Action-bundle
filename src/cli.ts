@@ -53,7 +53,8 @@ function usage(): never {
   process.exit(2);
 }
 
-function fail(err: unknown): never {
+function fail(err: unknown): void {
+  let exitCode = 4;
   if (err instanceof ActionBundleError) {
     console.error("[action-bundle] " + err.name + " (" + err.code + ")");
     console.error(err.message);
@@ -63,10 +64,15 @@ function fail(err: unknown): never {
       "UNEXPECTED_SHARD_COUNT", "MALFORMED_RESULT", "RUN_ID_MISMATCH",
       "MANIFEST_DIGEST_MISMATCH", "FAILED_SHARD", "SHARD_ASSIGNMENT_MISMATCH",
     ]);
-    process.exit(err.code === "INVALID_CONFIG" || err.code === "PLANNING_ERROR" ? 2 : verificationCodes.has(err.code) ? 3 : 4);
+    exitCode = err.code === "INVALID_CONFIG" || err.code === "PLANNING_ERROR" ? 2 : verificationCodes.has(err.code) ? 3 : 4;
+  } else {
+    console.error(err instanceof Error ? err.message : err);
   }
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(4);
+  // Set exitCode and return instead of process.exit(): an immediate exit
+  // would kill any pending SIGKILL escalation timer a killed worker command
+  // left armed, orphaning group members that ignored SIGTERM. With no
+  // pending timers the loop is already empty, so exit stays immediate.
+  process.exitCode = exitCode;
 }
 
 async function readJson(path: string): Promise<unknown> {
@@ -85,6 +91,18 @@ function positiveInt(value: string | undefined, name: string): number {
   return n;
 }
 
+/**
+ * SIGTERM->SIGKILL grace override for worker/reducer commands. Read ONLY by
+ * the CLI (ACTION_BUNDLE_KILL_GRACE_MS); library callers pass killGraceMs
+ * through options instead. Invalid values fall back to the default.
+ */
+function killGraceMsOverride(): number | undefined {
+  const raw = process.env.ACTION_BUNDLE_KILL_GRACE_MS;
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   if (!cmd || cmd === "--help" || cmd === "-h") usage();
@@ -94,12 +112,14 @@ async function main(): Promise<void> {
     const workloadPath = pos[0];
     if (!workloadPath) usage();
     const workload = (await readJson(workloadPath)) as Workload;
-    const shards = flags.shards === "auto" ? "auto" : Number(flags.shards ?? 8);
+    const shards = flags.shards === "auto" ? "auto" : positiveInt(flags.shards ?? "8", "--shards");
     const plan = createPlan({
       workload,
       shards,
-      maxShards: flags["max-shards"] ? Number(flags["max-shards"]) : undefined,
-      minTasksPerShard: flags["min-tasks-per-shard"] ? Number(flags["min-tasks-per-shard"]) : undefined,
+      maxShards: flags["max-shards"] ? positiveInt(flags["max-shards"], "--max-shards") : undefined,
+      minTasksPerShard: flags["min-tasks-per-shard"]
+        ? positiveInt(flags["min-tasks-per-shard"], "--min-tasks-per-shard")
+        : undefined,
     });
     console.log("Action-bundle execution plan");
     console.log("  runId        " + plan.runId);
@@ -124,6 +144,7 @@ async function main(): Promise<void> {
       command: flags.command,
       outDir: flags["out-dir"] ?? ".",
       cwd: flags.cwd,
+      killGraceMs: killGraceMsOverride(),
     });
     console.log(JSON.stringify(meta, null, 2));
     return;
@@ -157,6 +178,7 @@ async function main(): Promise<void> {
       command: flags.command,
       outPath: flags.out ?? "bundle-result.json",
       cwd: flags.cwd,
+      killGraceMs: killGraceMsOverride(),
     });
     console.log("[action-bundle] reduction complete: " + res.strategy + " -> " + res.outPath);
     return;

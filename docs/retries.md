@@ -18,7 +18,10 @@ now:
 1. Download `ab-manifests` and the surviving `shard-N` artifacts from the
    failed run.
 2. Rerun the workflow with the same workload (same plan, same runId).
-3. Keep the artifacts of the shards that failed before; merge directories.
+3. Take the rerun's artifacts for the shards that failed before, keep the
+   surviving ones from the first attempt, and merge the directories. This
+   works because an unchanged workload yields the same `runId` and the same
+   `manifestDigest` per shard.
 4. `action-bundle verify` over the merged directory proves coverage.
 
 ## Roadmap

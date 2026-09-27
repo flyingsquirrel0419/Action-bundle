@@ -69,6 +69,19 @@ jobs:
       shard_count: ${{ steps.plan.outputs.shard_count }}
       run_id: ${{ steps.plan.outputs.run_id }}
     steps:
+      # Fail closed: if job.workflow_repository / job.workflow_sha ever
+      # evaluate empty, actions/checkout would silently fall back to the
+      # CALLER repo/ref and we would run an unintended runtime. Never
+      # interpolate ${{ }} into the script; pass via env.
+      - name: Assert runtime identity
+        env:
+          WF_REPO: ${{ job.workflow_repository }}
+          WF_SHA: ${{ job.workflow_sha }}
+        run: |
+          if [ -z "$WF_REPO" ] || ! printf '%s' "$WF_SHA" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::runtime identity unavailable: WF_REPO='${WF_REPO}' WF_SHA='${WF_SHA}'"
+            exit 1
+          fi
       # The runtime is checked out from the exact reusable-workflow revision
       # being executed. The caller's own repo is NEVER used as the runtime.
       # job.workflow_repository / job.workflow_sha resolve to the CALLEE
@@ -109,6 +122,17 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
+      # Fail closed: empty job.workflow_repository / job.workflow_sha would
+      # make actions/checkout silently fall back to the CALLER repo/ref.
+      - name: Assert runtime identity
+        env:
+          WF_REPO: ${{ job.workflow_repository }}
+          WF_SHA: ${{ job.workflow_sha }}
+        run: |
+          if [ -z "$WF_REPO" ] || ! printf '%s' "$WF_SHA" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::runtime identity unavailable: WF_REPO='${WF_REPO}' WF_SHA='${WF_SHA}'"
+            exit 1
+          fi
       # job.workflow_repository / job.workflow_sha resolve to the CALLEE
       # (Action-bundle), the exact reusable workflow source. Verified by
       # cross-repo diagnostic run 36304682904.
@@ -173,6 +197,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Fail closed: empty job.workflow_repository / job.workflow_sha would
+      # make actions/checkout silently fall back to the CALLER repo/ref.
+      - name: Assert runtime identity
+        env:
+          WF_REPO: ${{ job.workflow_repository }}
+          WF_SHA: ${{ job.workflow_sha }}
+        run: |
+          if [ -z "$WF_REPO" ] || ! printf '%s' "$WF_SHA" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::runtime identity unavailable: WF_REPO='${WF_REPO}' WF_SHA='${WF_SHA}'"
+            exit 1
+          fi
       # job.workflow_repository / job.workflow_sha resolve to the CALLEE
       # (Action-bundle), the exact reusable workflow source. Verified by
       # cross-repo diagnostic run 36304682904.

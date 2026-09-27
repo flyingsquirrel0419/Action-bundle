@@ -40,8 +40,9 @@ resume are built on top of that (see [retries.md](retries.md)).
 | `manifest.ts` | Versioned manifest schema + validation |
 | `worker.ts` | Worker execution, env contract, result metadata |
 | `collector.ts` | Gather shard results from a directory |
-| `verify.ts` | Completeness proof |
+| `verify.ts` | Identity binding (run + manifest digest), status, per-shard assignment, coverage |
 | `reduce.ts` | Built-in + custom reducers |
+| `reducer-contract.ts` | Which output each reducer requires (shared by verify and reduce) |
 | `errors.ts` | Structured error hierarchy |
-| `cli.ts` | plan / worker / verify / reduce |
+| `cli.ts` | plan / worker / verify / reduce / expect-output |
 

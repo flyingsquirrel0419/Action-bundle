@@ -1,10 +1,7 @@
 import { readFile, writeFile, readdir, mkdir, stat, access } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { ReductionError } from "./errors.js";
-
-const execFileAsync = promisify(execFile);
+import { runShell } from "./exec.js";
 
 /** Per-shard output size ceiling (bytes) to bound reduction memory. */
 export const MAX_SHARD_BYTES = 64 * 1024 * 1024;
@@ -24,6 +21,8 @@ export interface ReduceOptions {
   outPath: string;
   /** Max milliseconds a custom command may run. Default 30 min. */
   timeoutMs?: number;
+  /** Grace between SIGTERM and SIGKILL when terminating a custom command. Default 5s. */
+  killGraceMs?: number;
   /**
    * Working directory for a custom reducer command (e.g. the caller
    * workspace). Built-in reducers ignore this. Must exist and be a directory.
@@ -162,15 +161,12 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
         ACTION_BUNDLE_SHARD_COUNT: String(shardCount),
       };
       try {
-        const { stdout, stderr } = await execFileAsync("sh", ["-c", opts.command ?? ""], {
+        await runShell(opts.command ?? "", {
           env,
           cwd,
-          maxBuffer: 64 * 1024 * 1024,
-          timeout: opts.timeoutMs ?? DEFAULT_REDUCE_TIMEOUT_MS,
-          killSignal: "SIGTERM",
+          timeoutMs: opts.timeoutMs ?? DEFAULT_REDUCE_TIMEOUT_MS,
+          killGraceMs: opts.killGraceMs,
         });
-        if (stdout) process.stdout.write(stdout);
-        if (stderr) process.stderr.write(stderr);
       } catch (e) {
         throw new ReductionError("custom reduce command failed", {
           error: e instanceof Error ? e.message : String(e),

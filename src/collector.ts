@@ -60,7 +60,6 @@ export async function collectFromDir(
   expectedOutput?: string,
 ): Promise<CollectedShard[]> {
   const results: CollectedShard[] = [];
-  const seen = new Set<number>();
   const missing: number[] = [];
   const malformed: string[] = [];
   const missingOutput: number[] = [];
@@ -84,12 +83,6 @@ export async function collectFromDir(
           { directory: i, declared: meta.shard },
         );
       }
-      if (seen.has(meta.shard)) {
-        throw new CollectionError("DUPLICATE_SHARDS", "duplicate shard result: " + meta.shard, {
-          shard: meta.shard,
-        });
-      }
-      seen.add(meta.shard);
       results.push({ shard: meta.shard, meta });
 
       if (expectedOutput && meta.status === "success") {
@@ -101,7 +94,6 @@ export async function collectFromDir(
       }
     } catch (e) {
       if (e instanceof CollectionError) {
-        if (e.code === "DUPLICATE_SHARDS") throw e;
         malformed.push("shard-" + i + ": " + e.message);
         continue;
       }
