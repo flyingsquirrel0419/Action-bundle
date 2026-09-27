@@ -152,7 +152,9 @@ jobs:
           if [ -n "$WORKER_COMMAND" ]; then
             CMD="$WORKER_COMMAND"
           else
-            CMD="node runtime/examples/benchmark/worker.mjs"
+            # Default benchmark worker lives in the runtime, which is not the
+            # worker's cwd — reference it by absolute path.
+            CMD="node $GITHUB_WORKSPACE/runtime/examples/benchmark/worker.mjs"
           fi
           node runtime/dist/cli.js worker \
             --manifest manifests/manifest-${SHARD}.json \
