@@ -85,15 +85,24 @@ jobs:
 전체 예시: [examples/use-bundle.yml](examples/use-bundle.yml).
 자체 matrix 워크플로우를 직접 꾸미려면 [docs/usage.md](docs/usage.md)를 참고.
 
-## 왜 샤딩인가
+## 벤치마크: 왜 샤딩인가
 
-| 샤드 수 | 이 저장소 CI에서의 벽시계 시간 | 비고 |
-|---|---|---|
-| 8 | ~23초 (run [36289249598](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36289249598)) | 샤드 잡 자체는 5~7초 |
-| 16 | ~25초 (run [36289296353](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36289296353)) | 오버헤드가 지배적 |
+GitHub 호스팅 러너 실측. 20 000 items × intensity 10 000
+(item당 sha256 10 000회, 약 5ms CPU):
 
-작업 자체가 짧으면 러너 부팅 + artifact 업/다운로드 비용이 병렬화 이득을 상쇄한다.
-잡당 수 분 이상 걸리는 작업(대규모 테스트, 빌드 매트릭스)에서 진가를 발휘한다.
+| 샤드 수 | 계산 시간 (가장 느린 샤드) | 전체 벽시계 시간 | 이상적 가속 | 실행 |
+|---|---|---|---|---|
+| 1 | 100.0초 | 127초 | 1.0x | [36290116153](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290116153) |
+| 4 | 25.9초 | 87초 | 3.6x | [36290117427](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290117427) |
+| 16 | 6.6초 | 68초 | 14.0x | [36290118749](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290118749) |
+
+계산 시간은 샤드 수에 거의 선형으로 줄어든다 — 퍼블릭 저장소가 공짜로 얻는
+병렬성이다. 나머지 벽시계는 고정 오버헤드(러너 부팅, checkout, artifact 전송)로
+실행당 수십 초라서, 잡당 수 분 이상 걸리는 작업(대규모 테스트, 빌드 매트릭스)에서
+진가를 발휘한다. 아주 짧은 작업에서는 오히려 오버헤드가 지배적이다.
+
+직접 재현: **Actions → shard-and-bundle → Run workflow**에서
+`work_intensity` / `item_count`를 조절하면 된다.
 
 ## API 요약
 

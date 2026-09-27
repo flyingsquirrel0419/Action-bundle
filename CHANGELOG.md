@@ -6,6 +6,18 @@ versions follow [Semantic Versioning](https://semver.org/lang/ko/).
 
 ## [Unreleased]
 
+### Changed
+
+- 워크플로우 출력(잡/스텝 이름, 입력 설명, Step Summary)을 영어로 통일
+
+### Added
+
+- `work_intensity` 입력: item당 sha256 반복 횟수로 워크로드 무게 조절
+  (tools/work.py `--work-intensity`, workflow input `work_intensity`)
+- 벤치마크 실측 (20 000 items × intensity 10 000):
+  1샤드 100.0s / 127s 벽시계, 4샤드 25.9s / 87s, 16샤드 6.6s / 68s
+  (runs 36290116153, 36290117427, 36290118749)
+
 ## [0.1.0] - 2026-09-27
 
 ### Added
@@ -23,4 +35,3 @@ versions follow [Semantic Versioning](https://semver.org/lang/ko/).
 
 [Unreleased]: https://github.com/flyingsquirrel0419/Action-bundle/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/flyingsquirrel0419/Action-bundle/releases/tag/v0.1.0
-

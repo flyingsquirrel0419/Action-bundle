@@ -86,15 +86,24 @@ jobs:
 完整示例:[examples/use-bundle.yml](examples/use-bundle.yml)。
 如需基于该库自建 matrix 工作流,见 [docs/usage.md](docs/usage.md)。
 
-## 为什么分片
+## 基准测试:为什么分片
 
-| 分片数 | 本仓库 CI 墙钟时间 | 备注 |
-|---|---|---|
-| 8 | ~23 秒 (run [36289249598](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36289249598)) | 分片作业本身 5–7 秒 |
-| 16 | ~25 秒 (run [36289296353](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36289296353)) | 开销占主导 |
+在 GitHub 托管 runner 上的实测:20 000 items × intensity 10 000
+(每个 item sha256 × 10 000,约 5ms CPU):
 
-任务很短时,runner 启动 + artifact 传输会抵消并行收益。
-当单个作业需要数分钟(大型测试套件、构建矩阵)时收益明显。
+| 分片数 | 计算时间(最慢分片) | 整体墙钟时间 | 理想加速比 | 运行 |
+|---|---|---|---|---|
+| 1 | 100.0 秒 | 127 秒 | 1.0x | [36290116153](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290116153) |
+| 4 | 25.9 秒 | 87 秒 | 3.6x | [36290117427](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290117427) |
+| 16 | 6.6 秒 | 68 秒 | 14.0x | [36290118749](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290118749) |
+
+计算时间随分片数几乎线性下降 —— 这是公共仓库免费获得的并行能力。
+其余墙钟时间是固定开销(runner 启动、checkout、artifact 传输),每次运行
+数十秒,因此当单个作业本来需要数分钟(大型测试套件、构建矩阵)时收益最大;
+任务很短时开销反而占主导。
+
+自行复现:**Actions → shard-and-bundle → Run workflow**,
+调整 `work_intensity` / `item_count` 即可。
 
 ## API 一览
 

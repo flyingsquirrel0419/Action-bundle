@@ -87,15 +87,25 @@ jobs:
 Full example: [examples/use-bundle.yml](examples/use-bundle.yml).
 To build your own matrix workflow around the library, see [docs/usage.md](docs/usage.md).
 
-## Why shard
+## Benchmark: why shard
 
-| Shards | Wall-clock in this repo's CI | Notes |
-|---|---|---|
-| 8 | ~23s (run [36289249598](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36289249598)) | shard jobs themselves: 5–7s |
-| 16 | ~25s (run [36289296353](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36289296353)) | overhead dominates |
+Real runs on GitHub-hosted runners, 20 000 items at intensity 10 000
+(sha256 × 10 000 per item, ~5ms of CPU each):
 
-For tiny workloads, runner boot + artifact transfer eats the parallel speedup.
-The pattern pays off when each job takes minutes (large test suites, build matrices).
+| Shards | Compute (slowest shard) | Full run wall-clock | Ideal speedup | Run |
+|---|---|---|---|---|
+| 1 | 100.0s | 127s | 1.0x | [36290116153](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290116153) |
+| 4 | 25.9s | 87s | 3.6x | [36290117427](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290117427) |
+| 16 | 6.6s | 68s | 14.0x | [36290118749](https://github.com/flyingsquirrel0419/Action-bundle/actions/runs/36290118749) |
+
+Compute time scales almost linearly with shard count — this is the free
+parallelism public repos get. The remaining wall-clock is fixed overhead
+(runner boot, checkout, artifact transfer): tens of seconds per run, so the
+pattern pays off once each job would otherwise take minutes (large test
+suites, build matrices). For tiny workloads that overhead dominates instead.
+
+Reproduce with your own numbers: **Actions → shard-and-bundle → Run workflow**
+and set `work_intensity` / `item_count`.
 
 ## API at a glance
 
