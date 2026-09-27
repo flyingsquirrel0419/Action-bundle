@@ -66,8 +66,8 @@ jobs:
       - name: Build execution plan
         id: plan
         env:
-          WORKLOAD: ${{ inputs.workload }}
-          SHARDS: ${{ inputs.shards }}
+          WORKLOAD: ${{ inputs.workload || '{"kind":"index","count":2000}' }}
+          SHARDS: ${{ inputs.shards || '8' }}
         run: node scripts/plan.mjs
       - name: Upload manifests
         uses: actions/upload-artifact@v4
@@ -95,7 +95,7 @@ jobs:
           path: manifests/
       - name: Run shard ${{ matrix.shard }}
         env:
-          INTENSITY: ${{ inputs.intensity }}
+          INTENSITY: ${{ inputs.intensity || '200' }}
           SHARD: ${{ matrix.shard }}
         run: |
           node dist/cli.js worker \
@@ -136,7 +136,7 @@ jobs:
             --manifests-dir manifests/
       - name: Reduce results
         env:
-          REDUCER: ${{ inputs.reducer }}
+          REDUCER: ${{ inputs.reducer || 'json-array' }}
         run: |
           node dist/cli.js reduce \
             --parts-dir parts/ \
@@ -152,7 +152,7 @@ jobs:
             echo "|---|---|"
             echo "| Run ID | \`${{ needs.setup.outputs.run_id }}\` |"
             echo "| Shards | \`${{ needs.setup.outputs.shard_count }}\` |"
-            echo "| Reducer | \`${{ inputs.reducer }}\` |"
+            echo "| Reducer | \`${{ inputs.reducer || 'json-array' }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload final result
         uses: actions/upload-artifact@v4
@@ -160,4 +160,3 @@ jobs:
           name: final-result
           path: final-result.json
           retention-days: 30
-
