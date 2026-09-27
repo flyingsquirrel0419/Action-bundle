@@ -71,22 +71,14 @@ jobs:
       # Resolve the exact Action-bundle source this reusable workflow came from.
       # github.workflow_ref is 'owner/repo/.github/workflows/x.yml@ref'.
       # The caller's own repo is NEVER used as the runtime.
-      - name: Resolve Action-bundle runtime source
-        id: rt
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          set -euo pipefail
-          REPO="flyingsquirrel0419/Action-bundle"
-          REF=${WORKFLOW_REF##*@}
-          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
-          echo "runtime source: $REPO @ $REF"
+      # job.workflow_repository / job.workflow_sha resolve to the CALLEE
+      # (Action-bundle), the exact reusable workflow source. Verified by
+      # cross-repo diagnostic run 36304682904.
       - name: Checkout Action-bundle runtime
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: ${{ steps.rt.outputs.repo }}
-          ref: ${{ steps.rt.outputs.ref }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           path: runtime/
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -116,26 +108,14 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
     steps:
-      - name: Resolve Action-bundle runtime source
-        id: rt
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          REPO="flyingsquirrel0419/Action-bundle"
-          REF=${WORKFLOW_REF##*@}
-          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
-      # Caller workspace: arbitrary worker code runs here.
-      - name: Checkout caller workspace
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          path: workspace/
-          persist-credentials: false
+      # job.workflow_repository / job.workflow_sha resolve to the CALLEE
+      # (Action-bundle), the exact reusable workflow source. Verified by
+      # cross-repo diagnostic run 36304682904.
       - name: Checkout Action-bundle runtime
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: ${{ steps.rt.outputs.repo }}
-          ref: ${{ steps.rt.outputs.ref }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           path: runtime/
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -175,20 +155,14 @@ jobs:
     needs: [setup, shard]
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve Action-bundle runtime source
-        id: rt
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          REPO="flyingsquirrel0419/Action-bundle"
-          REF=${WORKFLOW_REF##*@}
-          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+      # job.workflow_repository / job.workflow_sha resolve to the CALLEE
+      # (Action-bundle), the exact reusable workflow source. Verified by
+      # cross-repo diagnostic run 36304682904.
       - name: Checkout Action-bundle runtime
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: ${{ steps.rt.outputs.repo }}
-          ref: ${{ steps.rt.outputs.ref }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           path: runtime/
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
