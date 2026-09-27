@@ -26,12 +26,12 @@ def item_belongs_to_shard(item_id: int, shard_index: int, shard_count: int) -> b
     return int(digest, 16) % shard_count == shard_index
 
 
-def process_item(item_id: int) -> dict:
-    """item 하나를 처리한다. 실제 작업을 흉내 내려고 짧은 계산을 수행."""
+def process_item(item_id: int, intensity: int = 200) -> dict:
+    """item 하나를 처리한다. sha256을 intensity번 반복해 CPU를 쓴다."""
     payload = f"item-{item_id}".encode()
     digest = hashlib.sha256(payload).hexdigest()
-    # 가짜 연산: 해시를 반복해서 CPU를 조금 쓴다.
-    for _ in range(200):
+    # 가짜 연산: 해시를 반복해서 CPU를 쓴다. intensity로 무게 조절.
+    for _ in range(intensity):
         digest = hashlib.sha256(digest.encode()).hexdigest()
     return {"id": item_id, "digest": digest[:16]}
 
@@ -41,6 +41,7 @@ def main() -> None:
     parser.add_argument("--shard-index", type=int, required=True)
     parser.add_argument("--shard-count", type=int, required=True)
     parser.add_argument("--item-count", type=int, required=True)
+    parser.add_argument("--work-intensity", type=int, default=200)
     parser.add_argument("--out-dir", type=str, default="parts")
     args = parser.parse_args()
 
@@ -54,7 +55,7 @@ def main() -> None:
     ]
     results = []
     for item_id in mine:
-        r = process_item(item_id)
+        r = process_item(item_id, args.work_intensity)
         r["shard"] = args.shard_index
         results.append(r)
 
