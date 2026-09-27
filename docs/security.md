@@ -49,7 +49,9 @@ Worker and custom reducer commands run with inherited stdio (logs stream
 live, no output-size limit) and a 30-minute default timeout. On timeout, or
 when the runtime itself receives SIGINT/SIGTERM, the command's whole process
 group is sent SIGTERM, then SIGKILL after a short grace period — background
-processes started by the command do not outlive it.
+processes started by the command do not outlive it. The grace period is
+counted from the first termination request; repeated signals cannot
+postpone the SIGKILL.
 
 ## Untrusted PRs
 

@@ -50,6 +50,12 @@ next to your outputs — that file is what the collector and verifier consume.
 All `ACTION_BUNDLE_*` paths are absolute, because the command may run in a
 different working directory (`--cwd`, e.g. the caller workspace).
 
+Use a fresh, empty output directory for every run. Action-bundle removes a
+stale `completions.json` itself, but it does not delete your own output
+files: an `output.json` left over from a previous run in the same
+`--out-dir` would satisfy `verify --expect-output` even if this run never
+wrote one. The reusable workflow always starts from an empty runner.
+
 ## Local dry-run
 
 ```bash

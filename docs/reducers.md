@@ -31,7 +31,9 @@ The custom command receives:
 
 `--cwd` sets the working directory for the custom command (e.g. the caller
 workspace, so `python3 scripts/merge.py` finds your repo's files). Built-in
-reducers ignore it. A custom command that exits 0 without creating
+reducers ignore it. Any existing file at `ACTION_BUNDLE_OUTPUT` is deleted
+before the command starts, so a result left over from an earlier run can
+never pass for this one; a custom command that exits 0 without creating
 `ACTION_BUNDLE_OUTPUT` fails with `REDUCTION_ERROR` (CLI exit code 4).
 
 Custom reducers are arbitrary caller code, like workers — the same token

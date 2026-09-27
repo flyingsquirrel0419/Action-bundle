@@ -197,6 +197,20 @@ test("reduce: oversized shard output rejected before reading", async () => {
   );
 });
 
+test("reduce: custom reducer must not accept a stale output file", async () => {
+  const dir = await tmpDir("ab-staleout-");
+  const outPath = join(dir, "out.json");
+  await writeFile(outPath, '{"stale":true}');
+  await assert.rejects(
+    () => reduceResults({
+      partsDir: dir, shardCount: 1,
+      command: "true",
+      outPath,
+    }),
+    (e) => e.code === "REDUCTION_ERROR" && /did not create/.test(e.message),
+  );
+});
+
 test("reduce: custom command exiting 0 without creating output is rejected", async () => {
   const dir = await tmpDir("ab-nored-");
   await assert.rejects(
@@ -337,6 +351,22 @@ test("CLI worker: SIGTERM to the CLI still escalates SIGKILL to the group", asyn
     if (alive.length === 0) break;
     assert.ok(Date.now() < reapDeadline, "pids still alive after escalation: " + alive.join(","));
     await new Promise((r) => setTimeout(r, 100));
+  }
+});
+
+test("exec: repeated forwarded SIGTERM does not postpone SIGKILL", async () => {
+  // Child ignores SIGTERM entirely; the only escape is SIGKILL after the
+  // grace measured from the FIRST termination request.
+  const interval = setInterval(() => process.kill(process.pid, "SIGTERM"), 150);
+  try {
+    const started = Date.now();
+    await assert.rejects(
+      runShell('trap "" TERM; sleep 30', { killGraceMs: 500 }),
+      (e) => /killed by signal SIGKILL/.test(e.message),
+    );
+    assert.ok(Date.now() - started < 1500, "SIGKILL fires ~grace after the first SIGTERM");
+  } finally {
+    clearInterval(interval);
   }
 });
 

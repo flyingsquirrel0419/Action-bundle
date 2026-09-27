@@ -35,7 +35,8 @@ Writes `manifest.json` into `out`, clears any stale `completions.json`, sets
 the `ACTION_BUNDLE_*` environment (absolute paths), runs the command, then
 writes `result-meta.json`. `--cwd` runs the command in another directory
 (the reusable workflow uses the caller's `workspace/`); it must exist and be
-a directory. A failing command still writes `result-meta.json` with
+a directory. Use a fresh `--out-dir` per run (see the worker contract). A
+failing command still writes `result-meta.json` with
 `status: failed`, then exits 4. See [worker-contract.md](worker-contract.md).
 
 ## verify

@@ -32,7 +32,7 @@ Nothing is released yet — everything below is unreleased.
   `ReduceOptions.cwd`); must exist and be a directory
 - `manifestDigest` and `canonicalize` exported from the package root
 - Reusable workflow inputs `command` and `reduce_command`
-- 51 unit + integration tests covering partition invariants (union = input,
+- 53 unit + integration tests covering partition invariants (union = input,
   disjoint shards, determinism), every verification failure mode, worker
   failure metadata and timeouts, process-group termination, reducer cwd/env,
   and workload/flag validation
@@ -79,6 +79,11 @@ Nothing is released yet — everything below is unreleased.
   in the library, `ACTION_BUNDLE_KILL_GRACE_MS` for the CLI); background
   children no longer outlive the command. The CLI sets `process.exitCode`
   instead of calling `process.exit()` so a pending SIGKILL still fires.
+  The grace period starts at the first termination request; repeated
+  signals no longer postpone the SIGKILL.
+- A custom reducer's output path is cleared before the command runs, so a
+  result file left over from an earlier run can no longer satisfy the
+  "exited 0 but did not create" postcondition.
 
 ### Changed
 

@@ -1,4 +1,4 @@
-import { readFile, writeFile, readdir, mkdir, stat, access } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, stat, access, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { ReductionError } from "./errors.js";
 import { runShell } from "./exec.js";
@@ -160,6 +160,9 @@ export async function reduceResults(opts: ReduceOptions): Promise<{ outPath: str
         ACTION_BUNDLE_OUTPUT: resolve(opts.outPath),
         ACTION_BUNDLE_SHARD_COUNT: String(shardCount),
       };
+      // A stale output file from a previous run is not proof this run
+      // produced one — the postcondition below must check fresh output.
+      await rm(opts.outPath, { force: true });
       try {
         await runShell(opts.command ?? "", {
           env,

@@ -90,8 +90,12 @@ export function runShell(command: string, opts: RunShellOptions = {}): Promise<v
 
     /** Signal the whole group and arm SIGKILL escalation exactly once. */
     const terminate = (signal: NodeJS.Signals): void => {
-      terminationRequested = true;
-      terminateAt = Date.now();
+      // Grace is measured from the FIRST termination request: repeated
+      // forwarded signals must re-signal the group but never postpone SIGKILL.
+      if (!terminationRequested) {
+        terminationRequested = true;
+        terminateAt = Date.now();
+      }
       groupSignal(signal);
       armKillTimer(false);
     };
