@@ -106,19 +106,18 @@ Full API: [docs/library.md](docs/library.md). Worker environment variables:
 
 ## Benchmark (measured, not marketed)
 
-> **Historical benchmark** — measured before the current runtime/workspace
-> architecture; to be re-measured before the stable release.
-
-Real GitHub-hosted runners, 20,000 CPU-bound tasks (~5ms each):
+Real GitHub-hosted runners, 20,000 CPU-bound tasks (~7ms each), median of 3
+runs per shard count:
 
 | Shards | Compute (slowest shard) | Full run wall-clock | Speedup |
 |---|---|---|---|
-| 1 | 100.0s | 127s | 1.0x |
-| 4 | 25.9s | 87s | 3.6x |
-| 16 | 6.6s | 68s | 14.0x |
+| 1 | 136s | 186s | 1.0x |
+| 4 | 46s | 93s | 3.0x |
+| 16 | 12s | 63s | 11.3x |
 
-Compute time scales almost linearly; wall-clock does not, because every run
-pays ~60s of fixed overhead (runner boot, checkout, setup, artifact transfer).
+Compute shrinks with shard count (capped by the slowest runner in the matrix);
+wall-clock does not, because every run pays ~50s of fixed overhead (runner
+boot, checkouts, setup, artifact transfer).
 **Shard when per-shard compute is minutes, not seconds.** Methodology and run
 links: [benchmarks/README.md](benchmarks/README.md).
 

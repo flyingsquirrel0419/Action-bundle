@@ -2,10 +2,12 @@
 
 ## Supported versions
 
+No version has been released yet. Until the first release, security fixes
+land on `main` only.
+
 | Version | Supported |
 |---|---|
-| 0.2.x (latest) | ✓ |
-| 0.1.x | ✗ |
+| `main` / 0.2.0 pre-releases | ✓ |
 
 ## Reporting a vulnerability
 

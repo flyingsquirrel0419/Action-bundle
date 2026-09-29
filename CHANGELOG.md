@@ -36,9 +36,10 @@ Nothing is released yet — everything below is unreleased.
   disjoint shards, determinism), every verification failure mode, worker
   failure metadata and timeouts, process-group termination, reducer cwd/env,
   and workload/flag validation
-- Measured benchmark (20,000 CPU-bound items): 1 shard 100.0s compute →
-  16 shards 6.6s; full wall-clock 127s → 68s (historical — measured before
-  the runtime/workspace split, see `benchmarks/README.md`)
+- Measured benchmark on the current architecture (20,000 CPU-bound items,
+  median of 3 runs): compute 136s (1 shard) → 46s (4) → 12s (16); full
+  wall-clock 186s → 93s → 63s; `scripts/bench-stats.mjs` recomputes the
+  numbers from run ids
 
 ### Security
 

@@ -106,20 +106,19 @@ API completa: [docs/library.md](docs/library.md). Variables de entorno del worke
 
 ## Benchmark (medido, no promocionado)
 
-> **Benchmark histórico** — medido antes de la arquitectura actual
-> runtime/workspace; se volverá a medir antes de la versión estable.
-
-Runners reales hospedados en GitHub, 20.000 tareas CPU-bound (~5ms cada una):
+Runners reales hospedados en GitHub, 20.000 tareas CPU-bound (~7ms cada una),
+mediana de 3 ejecuciones por número de shards:
 
 | Shards | Cómputo (shard más lento) | Tiempo total del run | Aceleración |
 |---|---|---|---|
-| 1 | 100.0s | 127s | 1.0x |
-| 4 | 25.9s | 87s | 3.6x |
-| 16 | 6.6s | 68s | 14.0x |
+| 1 | 136s | 186s | 1.0x |
+| 4 | 46s | 93s | 3.0x |
+| 16 | 12s | 63s | 11.3x |
 
-El tiempo de cómputo escala casi linealmente; el tiempo total no, porque cada
-ejecución paga ~60s de overhead fijo (arranque del runner, checkout, setup,
-transferencia de artefactos). **Fragmenta cuando el cómputo por shard se mida en
+El tiempo de cómputo baja con el número de shards (limitado por el runner más
+lento de la matriz); el tiempo total no, porque cada ejecución paga ~50s de
+overhead fijo (arranque del runner, checkouts, setup, transferencia de
+artefactos). **Fragmenta cuando el cómputo por shard se mida en
 minutos, no en segundos.** Metodología y enlaces a los runs:
 [benchmarks/README.md](benchmarks/README.md).
 

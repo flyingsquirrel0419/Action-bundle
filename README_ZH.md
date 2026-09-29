@@ -104,19 +104,17 @@ const plan = createPlan({ workload: { kind: "index", count: 10_000 }, shards: "a
 
 ## 基准测试(实测,而非宣传)
 
-> **历史基准** —— 在当前 runtime/workspace 架构之前测得,稳定版发布前会
-> 重新测量。
-
-真实 GitHub 托管 runner,20,000 个 CPU 密集任务(每个约 5ms):
+真实 GitHub 托管 runner,20,000 个 CPU 密集任务(每个约 7ms),每种分片数
+运行 3 次取中位数:
 
 | 分片数 | 计算时间(最慢分片) | 整体墙钟时间 | 加速比 |
 |---|---|---|---|
-| 1 | 100.0s | 127s | 1.0x |
-| 4 | 25.9s | 87s | 3.6x |
-| 16 | 6.6s | 68s | 14.0x |
+| 1 | 136s | 186s | 1.0x |
+| 4 | 46s | 93s | 3.0x |
+| 16 | 12s | 63s | 11.3x |
 
-计算时间几乎线性下降;墙钟时间不会,因为每次运行都有约 60 秒的固定开销
-(runner 启动、checkout、setup、产物传输)。**当每个分片的计算量是分钟级
+计算时间随分片数下降(上限由 matrix 中最慢的 runner 决定);墙钟时间不会,
+因为每次运行都有约 50 秒的固定开销(runner 启动、checkout、setup、产物传输)。**当每个分片的计算量是分钟级
 而不是秒级时才分片。** 方法论和运行链接: [benchmarks/README.md](benchmarks/README.md)。
 
 ## 适用场景
